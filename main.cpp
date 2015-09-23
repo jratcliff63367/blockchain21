@@ -128,7 +128,12 @@ int main(int argc,const char **argv)
 			}
 			else
 			{
-				b->printBlock(block);
+				// Print one in every 100 blocks.  Obviously you would modify this code to interpret the block data however you best see fit.
+				if (((i + 1) % 100) == 0)
+				{
+					printf("Processing block: %d\r\n", i);
+					b->printBlock(block);
+				}
 			}
 		}
 	}
