@@ -45,6 +45,8 @@
 class BlockChain
 {
 public:
+	static BlockChain *createBlockChain(const char *rootPath, uint32_t maxBlocks);	// Create the BlockChain interface using this root directory for the location of the first 'blk00000.dat' on your hard drive.
+
 	// Each transaction is comprised of a set of inputs.  This class defines that input data stream.
 	class BlockInput
 	{
@@ -53,7 +55,6 @@ public:
 		{
 			responseScriptLength  = 0;
 			responseScript = 0;
-			signatureFormat = 0; // unassigned by default
 			inputValue = 0;
 		}
 		const uint8_t	*transactionHash;			// The hash of the input transaction; this a is a pointer to the 32 byte hash
@@ -61,7 +62,6 @@ public:
 		uint32_t		responseScriptLength;		// the length of the response script. (In theory this could be >32 bits; in practice it never will be.)
 		const uint8_t	*responseScript;			// The response script.   This gets run on the bitcoin script virtual machine; see bitcoin docs
 		uint32_t		sequenceNumber;				// The 'sequence' number
-		uint32_t		signatureFormat;			// Signature format bit flags
 		uint64_t		inputValue;					// The amount of value this input represents (based on the valid transaction hash)
 	};
 
@@ -86,6 +86,12 @@ public:
 		{
 			memset(address,0,sizeof(address));
 		}
+
+		bool operator==(const OutputAddress &other) const
+		{
+			return memcmp(address, other.address, sizeof(address)) == 0;
+		}
+
 		uint8_t	address[25];
 	};
 
@@ -112,7 +118,7 @@ public:
 		uint32_t		challengeScriptLength;	// The length of the challenge script  (In theory this could be >32 bits; in practice it never will be.)
 		const uint8_t	*challengeScript;		// The contents of the challenge script.  This gets run on the bitcoin script virtual machine; see bitcoin docs
 		uint32_t		signatureCount;		// Number of keys in the output
-		KeyType			keyType;			// If this is true, then the public key is the 20 byte RIPEMD160 hash rather than the full 65 byte ECDSA hash
+		KeyType			keyType;			// The type of key we encountered; it can be formulated in a number of ways
 		const char		*keyTypeName;		// ASCII representation of the keyType enum
 		uint32_t		multiSigFormat;	// bit flags identifying the format of each signature (compressed/uncompressed)
 		const uint8_t	*publicKey[MAX_MULTISIG];				// The public key output
@@ -213,6 +219,5 @@ protected:
 };
 
 
-BlockChain *createBlockChain(const char *rootPath,uint32_t maxBlocks);	// Create the BlockChain interface using this root directory for the location of the first 'blk00000.dat' on your hard drive.
 
 #endif

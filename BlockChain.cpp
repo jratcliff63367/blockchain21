@@ -43,399 +43,407 @@
 // These limits work for the blockchain current as of July 1, 2013.
 // The limits can be revised when and if necessary.
 #define MAX_BLOCK_SIZE (1024*1024)*32	// never expect to have a block larger than 32mb
-#define MAX_BLOCK_TRANSACTION 8192		// never expect more than 8192 transactions per block.
-#define MAX_BLOCK_INPUTS 32768			// never expect more than 8192 total inputs
-#define MAX_BLOCK_OUTPUTS 32768			// never expect more than 8192 total outputs
+#define MAX_BLOCK_TRANSACTION 32768		// never expect more than 32768 transactions per block.
+#define MAX_BLOCK_INPUTS 32768			// never expect more than 32768 total inputs
+#define MAX_BLOCK_OUTPUTS 32768			// never expect more than 32768 total outputs
 
-#define MAX_REASONABLE_SCRIPT_LENGTH (1024*32) // would never expect any script to be more than 16k in size; that would be very unusual!
-#define MAX_REASONABLE_INPUTS 8192				// really can't imagine any transaction ever having more than 8192 inputs
-#define MAX_REASONABLE_OUTPUTS 8192				// really can't imagine any transaction ever having more than 8192 outputs
+#define MAX_REASONABLE_SCRIPT_LENGTH (1024*32)	// would never expect any script to be more than 16k in size; that would be very unusual!
+#define MAX_REASONABLE_INPUTS 32678				// really can't imagine any transaction ever having more than 32768 inputs
+#define MAX_REASONABLE_OUTPUTS 32768			// really can't imagine any transaction ever having more than 32768 outputs
 
-enum ScriptOpcodes
+namespace BLOCK_CHAIN
 {
-	OP_0 = 0x00,
-	OP_PUSHDATA1 = 0x4c,
-	OP_PUSHDATA2 = 0x4d,
-	OP_PUSHDATA4 = 0x4e,
-	OP_1NEGATE = 0x4f,
-	OP_RESERVED = 0x50,
-	OP_1 = 0x51,
-	OP_2 = 0x52,
-	OP_3 = 0x53,
-	OP_4 = 0x54,
-	OP_5 = 0x55,
-	OP_6 = 0x56,
-	OP_7 = 0x57,
-	OP_8 = 0x58,
-	OP_9 = 0x59,
-	OP_10 = 0x5a,
-	OP_11 = 0x5b,
-	OP_12 = 0x5c,
-	OP_13 = 0x5d,
-	OP_14 = 0x5e,
-	OP_15 = 0x5f,
-	OP_16 = 0x60,
-	OP_NOP = 0x61,
-	OP_VER = 0x62,
-	OP_IF = 0x63,
-	OP_NOTIF = 0x64,
-	OP_VERIF = 0x65,
-	OP_VERNOTIF = 0x66,
-	OP_ELSE = 0x67,
-	OP_ENDIF = 0x68,
-	OP_VERIFY = 0x69,
-	OP_RETURN = 0x6a,
-	OP_TOALTSTACK = 0x6b,
-	OP_FROMALTSTACK = 0x6c,
-	OP_2DROP = 0x6d,
-	OP_2DUP = 0x6e,
-	OP_3DUP = 0x6f,
-	OP_2OVER = 0x70,
-	OP_2ROT = 0x71,
-	OP_2SWAP = 0x72,
-	OP_IFDUP = 0x73,
-	OP_DEPTH = 0x74,
-	OP_DROP = 0x75,
-	OP_DUP = 0x76,
-	OP_NIP = 0x77,
-	OP_OVER = 0x78,
-	OP_PICK = 0x79,
-	OP_ROLL = 0x7a,
-	OP_ROT = 0x7b,
-	OP_SWAP = 0x7c,
-	OP_TUCK = 0x7d,
-	OP_CAT = 0x7e,	// Currently disabled
-	OP_SUBSTR = 0x7f,	// Currently disabled
-	OP_LEFT = 0x80,	// Currently disabled
-	OP_RIGHT = 0x81,	// Currently disabled
-	OP_SIZE = 0x82,	// Currently disabled
-	OP_INVERT = 0x83,	// Currently disabled
-	OP_AND = 0x84,	// Currently disabled
-	OP_OR = 0x85,	// Currently disabled
-	OP_XOR = 0x86,	// Currently disabled
-	OP_EQUAL = 0x87,
-	OP_EQUALVERIFY = 0x88,
-	OP_RESERVED1 = 0x89,
-	OP_RESERVED2 = 0x8a,
-	OP_1ADD = 0x8b,
-	OP_1SUB = 0x8c,
-	OP_2MUL = 0x8d,	// Currently disabled
-	OP_2DIV = 0x8e,	// Currently disabled
-	OP_NEGATE = 0x8f,
-	OP_ABS = 0x90,
-	OP_NOT = 0x91,
-	OP_0NOTEQUAL = 0x92,
-	OP_ADD = 0x93,
-	OP_SUB = 0x94,
-	OP_MUL = 0x95,	// Currently disabled
-	OP_DIV = 0x96,	// Currently disabled
-	OP_MOD = 0x97,	// Currently disabled
-	OP_LSHIFT = 0x98,	// Currently disabled
-	OP_RSHIFT = 0x99,	// Currently disabled
-	OP_BOOLAND = 0x9a,
-	OP_BOOLOR = 0x9b,
-	OP_NUMEQUAL = 0x9c,
-	OP_NUMEQUALVERIFY = 0x9d,
-	OP_NUMNOTEQUAL = 0x9e,
-	OP_LESSTHAN = 0x9f,
-	OP_GREATERTHAN = 0xa0,
-	OP_LESSTHANOREQUAL = 0xa1,
-	OP_GREATERTHANOREQUAL = 0xa2,
-	OP_MIN = 0xa3,
-	OP_MAX = 0xa4,
-	OP_WITHIN = 0xa5,
-	OP_RIPEMD160 = 0xa6,
-	OP_SHA1 = 0xa7,
-	OP_SHA256 = 0xa8,
-	OP_HASH160 = 0xa9,
-	OP_HASH256 = 0xaa,
-	OP_CODESEPARATOR = 0xab,
-	OP_CHECKSIG = 0xac,
-	OP_CHECKSIGVERIFY = 0xad,
-	OP_CHECKMULTISIG = 0xae,
-	OP_CHECKMULTISIGVERIFY = 0xaf,
-	OP_NOP1 = 0xb0,
-	OP_NOP2 = 0xb1,
-	OP_NOP3 = 0xb2,
-	OP_NOP4 = 0xb3,
-	OP_NOP5 = 0xb4,
-	OP_NOP6 = 0xb5,
-	OP_NOP7 = 0xb6,
-	OP_NOP8 = 0xb7,
-	OP_NOP9 = 0xb8,
-	OP_NOP10 = 0xb9,
-	OP_SMALLINTEGER = 0xfa,
-	OP_PUBKEYS = 0xfb,
-	OP_PUBKEYHASH = 0xfd,
-	OP_PUBKEY = 0xfe,
-	OP_INVALIDOPCODE = 0xff
-};
 
-// Some globals for error reporting.
-static uint32_t	gBlockTime = 0;
-static uint32_t gBlockIndex = 0;
-static uint32_t gTransactionIndex = 0;
-static uint32_t gOutputIndex = 0;
-static bool		gIsWarning = false;
-static bool		gReportTransactionHash = false;
-static FILE		*gLogFile = NULL;
-static const char *gDummyKeyAscii = "1BadkEyPaj5oW2Uw4nY5BkYbPRYyTyqs9A";
-static uint8_t gDummyKey[25];
-static const char *gZeroByteAscii = "1zeroBTYRExUcufrTkwg27LsAvrhehtCJ";
-static uint8_t gZeroByte[25];
-
-static const char *getTimeString(uint32_t timeStamp)
-{
-	if ( timeStamp == 0 )
+	enum ScriptOpcodes
 	{
-		return "NEVER";
-	}
-	static char scratch[1024];
-	time_t t(timeStamp);
-	struct tm *gtm = gmtime(&t);
-	strftime(scratch, 1024, "%m/%d/%Y %H:%M:%S", gtm);
-	return scratch;
-}
+		OP_0 = 0x00,
+		OP_PUSHDATA1 = 0x4c,
+		OP_PUSHDATA2 = 0x4d,
+		OP_PUSHDATA4 = 0x4e,
+		OP_1NEGATE = 0x4f,
+		OP_RESERVED = 0x50,
+		OP_1 = 0x51,
+		OP_2 = 0x52,
+		OP_3 = 0x53,
+		OP_4 = 0x54,
+		OP_5 = 0x55,
+		OP_6 = 0x56,
+		OP_7 = 0x57,
+		OP_8 = 0x58,
+		OP_9 = 0x59,
+		OP_10 = 0x5a,
+		OP_11 = 0x5b,
+		OP_12 = 0x5c,
+		OP_13 = 0x5d,
+		OP_14 = 0x5e,
+		OP_15 = 0x5f,
+		OP_16 = 0x60,
+		OP_NOP = 0x61,
+		OP_VER = 0x62,
+		OP_IF = 0x63,
+		OP_NOTIF = 0x64,
+		OP_VERIF = 0x65,
+		OP_VERNOTIF = 0x66,
+		OP_ELSE = 0x67,
+		OP_ENDIF = 0x68,
+		OP_VERIFY = 0x69,
+		OP_RETURN = 0x6a,
+		OP_TOALTSTACK = 0x6b,
+		OP_FROMALTSTACK = 0x6c,
+		OP_2DROP = 0x6d,
+		OP_2DUP = 0x6e,
+		OP_3DUP = 0x6f,
+		OP_2OVER = 0x70,
+		OP_2ROT = 0x71,
+		OP_2SWAP = 0x72,
+		OP_IFDUP = 0x73,
+		OP_DEPTH = 0x74,
+		OP_DROP = 0x75,
+		OP_DUP = 0x76,
+		OP_NIP = 0x77,
+		OP_OVER = 0x78,
+		OP_PICK = 0x79,
+		OP_ROLL = 0x7a,
+		OP_ROT = 0x7b,
+		OP_SWAP = 0x7c,
+		OP_TUCK = 0x7d,
+		OP_CAT = 0x7e,	// Currently disabled
+		OP_SUBSTR = 0x7f,	// Currently disabled
+		OP_LEFT = 0x80,	// Currently disabled
+		OP_RIGHT = 0x81,	// Currently disabled
+		OP_SIZE = 0x82,	// Currently disabled
+		OP_INVERT = 0x83,	// Currently disabled
+		OP_AND = 0x84,	// Currently disabled
+		OP_OR = 0x85,	// Currently disabled
+		OP_XOR = 0x86,	// Currently disabled
+		OP_EQUAL = 0x87,
+		OP_EQUALVERIFY = 0x88,
+		OP_RESERVED1 = 0x89,
+		OP_RESERVED2 = 0x8a,
+		OP_1ADD = 0x8b,
+		OP_1SUB = 0x8c,
+		OP_2MUL = 0x8d,	// Currently disabled
+		OP_2DIV = 0x8e,	// Currently disabled
+		OP_NEGATE = 0x8f,
+		OP_ABS = 0x90,
+		OP_NOT = 0x91,
+		OP_0NOTEQUAL = 0x92,
+		OP_ADD = 0x93,
+		OP_SUB = 0x94,
+		OP_MUL = 0x95,	// Currently disabled
+		OP_DIV = 0x96,	// Currently disabled
+		OP_MOD = 0x97,	// Currently disabled
+		OP_LSHIFT = 0x98,	// Currently disabled
+		OP_RSHIFT = 0x99,	// Currently disabled
+		OP_BOOLAND = 0x9a,
+		OP_BOOLOR = 0x9b,
+		OP_NUMEQUAL = 0x9c,
+		OP_NUMEQUALVERIFY = 0x9d,
+		OP_NUMNOTEQUAL = 0x9e,
+		OP_LESSTHAN = 0x9f,
+		OP_GREATERTHAN = 0xa0,
+		OP_LESSTHANOREQUAL = 0xa1,
+		OP_GREATERTHANOREQUAL = 0xa2,
+		OP_MIN = 0xa3,
+		OP_MAX = 0xa4,
+		OP_WITHIN = 0xa5,
+		OP_RIPEMD160 = 0xa6,
+		OP_SHA1 = 0xa7,
+		OP_SHA256 = 0xa8,
+		OP_HASH160 = 0xa9,
+		OP_HASH256 = 0xaa,
+		OP_CODESEPARATOR = 0xab,
+		OP_CHECKSIG = 0xac,
+		OP_CHECKSIGVERIFY = 0xad,
+		OP_CHECKMULTISIG = 0xae,
+		OP_CHECKMULTISIGVERIFY = 0xaf,
+		OP_NOP1 = 0xb0,
+		OP_NOP2 = 0xb1,
+		OP_NOP3 = 0xb2,
+		OP_NOP4 = 0xb3,
+		OP_NOP5 = 0xb4,
+		OP_NOP6 = 0xb5,
+		OP_NOP7 = 0xb6,
+		OP_NOP8 = 0xb7,
+		OP_NOP9 = 0xb8,
+		OP_NOP10 = 0xb9,
+		OP_SMALLINTEGER = 0xfa,
+		OP_PUBKEYS = 0xfb,
+		OP_PUBKEYHASH = 0xfd,
+		OP_PUBKEY = 0xfe,
+		OP_INVALIDOPCODE = 0xff
+	};
 
-static bool inline isASCII(char c)
-{
-	bool ret = false;
+	// Some globals for error reporting.
+	static uint32_t	gBlockTime = 0;
+	static uint32_t gBlockIndex = 0;
+	static uint32_t gTransactionIndex = 0;
+	static uint32_t gOutputIndex = 0;
+	static bool		gIsWarning = false;
+	static bool		gReportTransactionHash = false;
+	static FILE		*gLogFile = NULL;
+	static const char *gDummyKeyAscii = "1BadkEyPaj5oW2Uw4nY5BkYbPRYyTyqs9A";
+	static uint8_t gDummyKey[25];
+	static const char *gZeroByteAscii = "1zeroBTYRExUcufrTkwg27LsAvrhehtCJ";
+	static uint8_t gZeroByte[25];
 
-	if ((c >= 32 && c < 127) || c == 13)
+	static const char *getTimeString(uint32_t timeStamp)
 	{
-		ret = true;
+		if (timeStamp == 0)
+		{
+			return "NEVER";
+		}
+		static char scratch[1024];
+		time_t t(timeStamp);
+		struct tm *gtm = gmtime(&t);
+		strftime(scratch, 1024, "%m/%d/%Y %H:%M:%S", gtm);
+		return scratch;
 	}
 
-	return ret;
-}
+	static bool inline isASCII(char c)
+	{
+		bool ret = false;
 
-static const char *getDateString(time_t t)
-{
-	static char scratch[1024];
-	struct tm *gtm = gmtime(&t);
-	//	strftime(scratch, 1024, "%m, %d, %Y", gtm);
-	sprintf(scratch, "%4d-%02d-%02d", gtm->tm_year + 1900, gtm->tm_mon + 1, gtm->tm_mday);
-	return scratch;
-}
-// This is a helper method to handle logging the output from scanning the blockchain
-static void logMessage(const char *fmt, ...)
-{
-	char wbuff[2048];
-	va_list arg;
-	va_start(arg, fmt);
-	vsprintf(wbuff, fmt, arg);
-	va_end(arg);
-	printf("%s", wbuff);
-	if (gLogFile == NULL)
-	{
-		gLogFile = fopen("blockchain.txt", "wb");
+		if ((c >= 32 && c < 127) || c == 13)
+		{
+			ret = true;
+		}
+
+		return ret;
 	}
-	if (gLogFile)
+
+	static const char *getDateString(time_t t)
 	{
-		fprintf(gLogFile, "%s", wbuff);
-		fflush(gLogFile);
+		static char scratch[1024];
+		struct tm *gtm = gmtime(&t);
+		//	strftime(scratch, 1024, "%m, %d, %Y", gtm);
+		sprintf(scratch, "%4d-%02d-%02d", gtm->tm_year + 1900, gtm->tm_mon + 1, gtm->tm_mday);
+		return scratch;
 	}
-}
+	// This is a helper method to handle logging the output from scanning the blockchain
+	static void logMessage(const char *fmt, ...)
+	{
+		char wbuff[2048];
+		va_list arg;
+		va_start(arg, fmt);
+		vsprintf(wbuff, fmt, arg);
+		va_end(arg);
+		printf("%s", wbuff);
+		if (gLogFile == NULL)
+		{
+			gLogFile = fopen("blockchain.txt", "wb");
+		}
+		if (gLogFile)
+		{
+			fprintf(gLogFile, "%s", wbuff);
+			fflush(gLogFile);
+		}
+	}
 
 #define MAXNUMERIC 32  // JWR  support up to 16 32 character long numeric formated strings
 #define MAXFNUM    16
 
-static	char  gFormat[MAXNUMERIC*MAXFNUM];
-static int32_t    gIndex = 0;
+	static	char  gFormat[MAXNUMERIC*MAXFNUM];
+	static int32_t    gIndex = 0;
 
-// This is a helper method for getting a formatted numeric output (basically having the commas which makes them easier to read)
-static const char * formatNumber(int32_t number) // JWR  format this integer into a fancy comma delimited string
-{
-	char * dest = &gFormat[gIndex*MAXNUMERIC];
-	gIndex++;
-	if (gIndex == MAXFNUM) gIndex = 0;
+	// This is a helper method for getting a formatted numeric output (basically having the commas which makes them easier to read)
+	static const char * formatNumber(int32_t number) // JWR  format this integer into a fancy comma delimited string
+	{
+		char * dest = &gFormat[gIndex*MAXNUMERIC];
+		gIndex++;
+		if (gIndex == MAXFNUM) gIndex = 0;
 
-	char scratch[512];
+		char scratch[512];
 
 #ifdef _MSC_VER
-	itoa(number, scratch, 10);
+		itoa(number, scratch, 10);
 #else
-	snprintf(scratch, 10, "%d", number);
+		snprintf(scratch, 10, "%d", number);
 #endif
 
-	char *source = scratch;
-	char *str = dest;
-	uint32_t len = (uint32_t)strlen(scratch);
-	if (scratch[0] == '-')
-	{
-		*str++ = '-';
-		source++;
-		len--;
-	}
-	for (uint32_t i = 0; i < len; i++)
-	{
-		int32_t place = (len - 1) - i;
-		*str++ = source[i];
-		if (place && (place % 3) == 0) *str++ = ',';
-	}
-	*str = 0;
-
-	return dest;
-}
-
-static void printReverseHash(const uint8_t *hash)
-{
-	if (hash)
-	{
-		for (uint32_t i = 0; i < 32; i++)
+		char *source = scratch;
+		char *str = dest;
+		uint32_t len = (uint32_t)strlen(scratch);
+		if (scratch[0] == '-')
 		{
-			logMessage("%02x", hash[31 - i]);
+			*str++ = '-';
+			source++;
+			len--;
+		}
+		for (uint32_t i = 0; i < len; i++)
+		{
+			int32_t place = (len - 1) - i;
+			*str++ = source[i];
+			if (place && (place % 3) == 0) *str++ = ',';
+		}
+		*str = 0;
+
+		return dest;
+	}
+
+	static void printReverseHash(const uint8_t *hash)
+	{
+		if (hash)
+		{
+			for (uint32_t i = 0; i < 32; i++)
+			{
+				logMessage("%02x", hash[31 - i]);
+			}
+		}
+		else
+		{
+			logMessage("NULL HASH");
 		}
 	}
-	else
+
+
+	// A 256 bit hash
+	class Hash256
 	{
-		logMessage("NULL HASH");
-	}
-}
+	public:
+		Hash256(void)
+		{
+			mWord0 = 0;
+			mWord1 = 0;
+			mWord2 = 0;
+			mWord3 = 0;
+		}
+
+		Hash256(const Hash256 &h)
+		{
+			mWord0 = h.mWord0;
+			mWord1 = h.mWord1;
+			mWord2 = h.mWord2;
+			mWord3 = h.mWord3;
+		}
+
+		inline Hash256(const uint8_t *src)
+		{
+			mWord0 = *(const uint64_t *)(src);
+			mWord1 = *(const uint64_t *)(src + 8);
+			mWord2 = *(const uint64_t *)(src + 16);
+			mWord3 = *(const uint64_t *)(src + 24);
+		}
+
+		inline uint32_t getHash(void) const
+		{
+			const uint32_t *h = (const uint32_t *)&mWord0;
+			return h[0] ^ h[1] ^ h[2] ^ h[3] ^ h[4] ^ h[5] ^ h[6] ^ h[7];
+		}
+
+		inline bool operator==(const Hash256 &h) const
+		{
+			return mWord0 == h.mWord0 && mWord1 == h.mWord1 && mWord2 == h.mWord2 && mWord3 == h.mWord3;
+		}
 
 
-// A 256 byte hash
-class Hash256
-{
-public:
-	Hash256(void)
+		uint64_t	mWord0;
+		uint64_t	mWord1;
+		uint64_t	mWord2;
+		uint64_t	mWord3;
+	};
+
+	class BlockHeader : public Hash256
 	{
-		mWord0 = 0;
-		mWord1 = 0;
-		mWord2 = 0;
-		mWord3 = 0;
-	}
+	public:
+		BlockHeader(void)
+		{
+			mFileIndex = 0;
+			mFileOffset = 0;
+			mBlockLength = 0;
+		}
 
-	Hash256(const Hash256 &h)
+		BlockHeader(const Hash256 &h) : Hash256(h)
+		{
+			mFileIndex = 0;
+			mFileOffset = 0;
+			mBlockLength = 0;
+		}
+
+		// Here the == operator is used to see if the hash values match
+		bool operator==(const BlockHeader &other) const
+		{
+			const Hash256 &a = *this;
+			const Hash256 &b = other;
+			return a == b;
+		}
+
+		uint32_t	mFileIndex;
+		uint32_t	mFileOffset;
+		uint32_t	mBlockLength;
+		uint8_t		mPreviousBlockHash[32];
+	};
+
+	class FileLocation : public Hash256
 	{
-		mWord0 = h.mWord0;
-		mWord1 = h.mWord1;
-		mWord2 = h.mWord2;
-		mWord3 = h.mWord3;
-	}
+	public:
+		FileLocation(void)
+		{
 
-	inline Hash256(const uint8_t *src)
+		}
+		FileLocation(const Hash256 &h, uint32_t fileIndex, uint32_t fileOffset, uint32_t fileLength, uint32_t transactionIndex) : Hash256(h)
+		{
+			mFileIndex = fileIndex;
+			mFileOffset = fileOffset;
+			mFileLength = fileLength;
+			mTransactionIndex = transactionIndex;
+		}
+
+		// Here the == operator is used to see if the hash values match
+		bool operator==(const BlockHeader &other) const
+		{
+			const Hash256 &a = *this;
+			const Hash256 &b = other;
+			return a == b;
+		}
+
+
+		uint32_t	mFileIndex;
+		uint32_t	mFileOffset;
+		uint32_t	mFileLength;
+		uint32_t	mTransactionIndex;
+	};
+
+	struct BlockPrefix
 	{
-		mWord0 = *(const uint64_t *)(src);
-		mWord1 = *(const uint64_t *)(src + 8);
-		mWord2 = *(const uint64_t *)(src + 16);
-		mWord3 = *(const uint64_t *)(src + 24);
-	}
-
-	inline uint32_t getHash(void) const
-	{
-		const uint32_t *h = (const uint32_t *)&mWord0;
-		return h[0] ^ h[1] ^ h[2] ^ h[3] ^ h[4] ^ h[5] ^ h[6] ^ h[7];
-	}
-
-	inline bool operator==(const Hash256 &h) const
-	{
-		return mWord0 == h.mWord0 && mWord1 == h.mWord1 && mWord2 == h.mWord2 && mWord3 == h.mWord3;
-	}
-
-
-	uint64_t	mWord0;
-	uint64_t	mWord1;
-	uint64_t	mWord2;
-	uint64_t	mWord3;
-};
-
-class BlockHeader : public Hash256
-{
-public:
-	BlockHeader(void)
-	{
-		mFileIndex = 0;
-		mFileOffset = 0;
-		mBlockLength = 0;
-	}
-
-	BlockHeader(const Hash256 &h) : Hash256(h)
-	{
-		mFileIndex = 0;
-		mFileOffset = 0;
-		mBlockLength = 0;
-	}
-
-	// Here the == operator is used to see if the hash values match
-	bool operator==(const BlockHeader &other) const
-	{
-		const Hash256 &a = *this;
-		const Hash256 &b = other;
-		return a == b;
-	}
-
-	uint32_t	mFileIndex;
-	uint32_t	mFileOffset;
-	uint32_t	mBlockLength;
-	uint8_t		mPreviousBlockHash[32];
-};
-
-class FileLocation : public Hash256
-{
-public:
-	FileLocation(void)
-	{
-
-	}
-	FileLocation(const Hash256 &h,uint32_t fileIndex,uint32_t fileOffset,uint32_t fileLength,uint32_t transactionIndex) : Hash256(h)
-	{
-		mFileIndex = fileIndex;
-		mFileOffset = fileOffset;
-		mFileLength = fileLength;
-		mTransactionIndex = transactionIndex;
-	}
-
-	// Here the == operator is used to see if the hash values match
-	bool operator==(const BlockHeader &other) const
-	{
-		const Hash256 &a = *this;
-		const Hash256 &b = other;
-		return a == b;
-	}
-
-
-	uint32_t	mFileIndex;
-	uint32_t	mFileOffset;
-	uint32_t	mFileLength;
-	uint32_t	mTransactionIndex;
-};
-
-struct BlockPrefix
-{
-	uint32_t	mVersion;					// The block version number.
-	uint8_t		mPreviousBlock[32];			// The 32 byte (256 bit) hash of the previous block in the blockchain
-	uint8_t		mMerkleRoot[32];			// The 32 bye merkle root hash
-	uint32_t	mTimeStamp;					// The block time stamp
-	uint32_t	mBits;						// The block bits field.
-	uint32_t	mNonce;						// The block random number 'nonce' field.
-};
+		uint32_t	mVersion;					// The block version number.
+		uint8_t		mPreviousBlock[32];			// The 32 byte (256 bit) hash of the previous block in the blockchain
+		uint8_t		mMerkleRoot[32];			// The 32 bye merkle root hash
+		uint32_t	mTimeStamp;					// The block time stamp
+		uint32_t	mBits;						// The block bits field.
+		uint32_t	mNonce;						// The block random number 'nonce' field.
+	};
 
 #define MAGIC_ID 0xD9B4BEF9
 #define ONE_BTC 100000000
 #define ONE_MBTC (ONE_BTC/1000)
 
+} // end of BLOCK_CHAIN namespace
+
 // A template to compute the hash value for a BlockHeader
 namespace std
 {
 	template <>
-	struct hash<BlockHeader>
+	struct hash<BLOCK_CHAIN::BlockHeader>
 	{
-		std::size_t operator()(const BlockHeader &k) const
+		std::size_t operator()(const BLOCK_CHAIN::BlockHeader &k) const
 		{
 			return std::size_t(k.getHash());
 		}
 	};
 	template <>
-	struct hash<FileLocation>
+	struct hash<BLOCK_CHAIN::FileLocation>
 	{
-		std::size_t operator()(const FileLocation &k) const
+		std::size_t operator()(const BLOCK_CHAIN::FileLocation &k) const
 		{
 			return std::size_t(k.getHash());
 		}
 	};
 
 }
+
+namespace BLOCK_CHAIN
+{
 
 class BlockImpl : public BlockChain::Block
 {
@@ -1756,9 +1764,10 @@ public:
 	FileLocationSet				mTransactionSet;
 };
 
+} // end of BLOCK_CHAIN namespace
 
-BlockChain *createBlockChain(const char *rootPath,uint32_t maxBlocks)
+BlockChain *BlockChain::createBlockChain(const char *rootPath,uint32_t maxBlocks)
 {
-	BlockChainImpl *b = new BlockChainImpl(rootPath,maxBlocks);
+	BLOCK_CHAIN::BlockChainImpl *b = new BLOCK_CHAIN::BlockChainImpl(rootPath, maxBlocks);
 	return static_cast< BlockChain *>(b);
 }

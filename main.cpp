@@ -8,6 +8,13 @@
 #include <time.h>
 #include "RIPEMD160.h"
 
+#define BUILD_PUBLIC_KEY_DATABASE 0
+
+#if BUILD_PUBLIC_KEY_DATABASE
+#include "PublicKeyDatabase.h"
+#endif
+
+
 #ifdef WIN32
 #include <conio.h>
 #endif
@@ -89,9 +96,12 @@ int main(int argc,const char **argv)
 		}
 		i++;
 	}
-	BlockChain *b = createBlockChain(dataPath,maxBlocks);
+	BlockChain *b = BlockChain::createBlockChain(dataPath,maxBlocks);
 	if (b)
 	{
+#if BUILD_PUBLIC_KEY_DATABASE
+		PublicKeyDatabase *p = PublicKeyDatabase::create();
+#endif
 		b->setSearchTextLength(searchForTextLength);
 		printf("Scanning the blockchain for blocks.\r\n");
 		for (;;)
@@ -128,15 +138,22 @@ int main(int argc,const char **argv)
 			}
 			else
 			{
-				// Print one in every 100 blocks.  Obviously you would modify this code to interpret the block data however you best see fit.
-				if (((i + 1) % 100) == 0)
-				{
-					printf("Processing block: %d\r\n", i);
-					b->printBlock(block);
-				}
+#if BUILD_PUBLIC_KEY_DATABASE
+				p->addBlock(block);
+#else
+				b->printBlock(block);
+#endif
 			}
 		}
+#if BUILD_PUBLIC_KEY_DATABASE
+		printf("Building the PublicKeyDatabase\r\n");
+		p->buildPublicKeyDatabase();
+		p->release();
+#endif
 	}
-
+	printf("Completed parsing the blockchain.\r\n");
+#ifdef WIN32
+//	getch();
+#endif
 	return 0;
 }

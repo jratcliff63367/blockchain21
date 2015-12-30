@@ -120,6 +120,10 @@
     </ClInclude>
     <ClInclude Include="..\..\BlockChain.h">
     </ClInclude>
+    <ClInclude Include="..\..\CRC32.h">
+    </ClInclude>
+    <ClInclude Include="..\..\PublicKeyDatabase.h">
+    </ClInclude>
     <ClInclude Include="..\..\RIPEMD160.h">
     </ClInclude>
     <ClInclude Include="..\..\SHA256.h">
@@ -130,7 +134,11 @@
     </ClCompile>
     <ClCompile Include="..\..\BlockChain.cpp">
     </ClCompile>
+    <ClCompile Include="..\..\CRC32.cpp">
+    </ClCompile>
     <ClCompile Include="..\..\main.cpp">
+    </ClCompile>
+    <ClCompile Include="..\..\PublicKeyDatabase.cpp">
     </ClCompile>
     <ClCompile Include="..\..\RIPEMD160.cpp">
     </ClCompile>
