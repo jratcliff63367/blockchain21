@@ -13,6 +13,7 @@
 #include "BitcoinAddress.h"
 #include "RIPEMD160.h"
 #include "SHA256.h"
+#include "logging.h"
 
 //
 // Written by John W. Ratcliff : mailto: jratcliffscarab@gmail.com
@@ -181,24 +182,10 @@ namespace BLOCK_CHAIN
 	static uint32_t gOutputIndex = 0;
 	static bool		gIsWarning = false;
 	static bool		gReportTransactionHash = false;
-	static FILE		*gLogFile = NULL;
 	static const char *gDummyKeyAscii = "1BadkEyPaj5oW2Uw4nY5BkYbPRYyTyqs9A";
 	static uint8_t gDummyKey[25];
 	static const char *gZeroByteAscii = "1zeroBTYRExUcufrTkwg27LsAvrhehtCJ";
 	static uint8_t gZeroByte[25];
-
-	static const char *getTimeString(uint32_t timeStamp)
-	{
-		if (timeStamp == 0)
-		{
-			return "NEVER";
-		}
-		static char scratch[1024];
-		time_t t(timeStamp);
-		struct tm *gtm = gmtime(&t);
-		strftime(scratch, 1024, "%m/%d/%Y %H:%M:%S", gtm);
-		return scratch;
-	}
 
 	static bool inline isASCII(char c)
 	{
@@ -211,91 +198,6 @@ namespace BLOCK_CHAIN
 
 		return ret;
 	}
-
-	static const char *getDateString(time_t t)
-	{
-		static char scratch[1024];
-		struct tm *gtm = gmtime(&t);
-		//	strftime(scratch, 1024, "%m, %d, %Y", gtm);
-		sprintf(scratch, "%4d-%02d-%02d", gtm->tm_year + 1900, gtm->tm_mon + 1, gtm->tm_mday);
-		return scratch;
-	}
-	// This is a helper method to handle logging the output from scanning the blockchain
-	static void logMessage(const char *fmt, ...)
-	{
-		char wbuff[2048];
-		va_list arg;
-		va_start(arg, fmt);
-		vsprintf(wbuff, fmt, arg);
-		va_end(arg);
-		printf("%s", wbuff);
-		if (gLogFile == NULL)
-		{
-			gLogFile = fopen("blockchain.txt", "wb");
-		}
-		if (gLogFile)
-		{
-			fprintf(gLogFile, "%s", wbuff);
-			fflush(gLogFile);
-		}
-	}
-
-#define MAXNUMERIC 32  // JWR  support up to 16 32 character long numeric formated strings
-#define MAXFNUM    16
-
-	static	char  gFormat[MAXNUMERIC*MAXFNUM];
-	static int32_t    gIndex = 0;
-
-	// This is a helper method for getting a formatted numeric output (basically having the commas which makes them easier to read)
-	static const char * formatNumber(int32_t number) // JWR  format this integer into a fancy comma delimited string
-	{
-		char * dest = &gFormat[gIndex*MAXNUMERIC];
-		gIndex++;
-		if (gIndex == MAXFNUM) gIndex = 0;
-
-		char scratch[512];
-
-#ifdef _MSC_VER
-		itoa(number, scratch, 10);
-#else
-		snprintf(scratch, 10, "%d", number);
-#endif
-
-		char *source = scratch;
-		char *str = dest;
-		uint32_t len = (uint32_t)strlen(scratch);
-		if (scratch[0] == '-')
-		{
-			*str++ = '-';
-			source++;
-			len--;
-		}
-		for (uint32_t i = 0; i < len; i++)
-		{
-			int32_t place = (len - 1) - i;
-			*str++ = source[i];
-			if (place && (place % 3) == 0) *str++ = ',';
-		}
-		*str = 0;
-
-		return dest;
-	}
-
-	static void printReverseHash(const uint8_t *hash)
-	{
-		if (hash)
-		{
-			for (uint32_t i = 0; i < 32; i++)
-			{
-				logMessage("%02x", hash[31 - i]);
-			}
-		}
-		else
-		{
-			logMessage("NULL HASH");
-		}
-	}
-
 
 	// A 256 bit hash
 	class Hash256

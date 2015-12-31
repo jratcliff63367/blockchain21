@@ -1,86 +1,25 @@
 #include "PublicKeyDatabase.h"
+#include "BitcoinAddress.h"
+#include "logging.h"
 #include "CRC32.h"
 
 #include <stdio.h>
 #include <vector>
 #include <unordered_set>
+#include <unordered_map>
 #include <assert.h>
 #include <time.h>
 
+#define ONE_BTC 100000000
+#define ONE_MBTC (ONE_BTC/1000)
+
+
 #ifdef _MSC_VER
-#pragma warning(disable:4100 4996)
+#pragma warning(disable:4100 4996 4189)
 #endif
 
 namespace PUBLIC_KEY_DATABASE
 {
-
-#define MAXNUMERIC 32  // JWR  support up to 16 32 character long numeric formated strings
-#define MAXFNUM    16
-
-	static	char  gFormat[MAXNUMERIC*MAXFNUM];
-	static int32_t    gIndex = 0;
-
-	// This is a helper method for getting a formatted numeric output (basically having the commas which makes them easier to read)
-	static const char * formatNumber(int32_t number) // JWR  format this integer into a fancy comma delimited string
-	{
-		char * dest = &gFormat[gIndex*MAXNUMERIC];
-		gIndex++;
-		if (gIndex == MAXFNUM) gIndex = 0;
-
-		char scratch[512];
-
-#ifdef _MSC_VER
-		itoa(number, scratch, 10);
-#else
-		snprintf(scratch, 10, "%d", number);
-#endif
-
-		char *source = scratch;
-		char *str = dest;
-		uint32_t len = (uint32_t)strlen(scratch);
-		if (scratch[0] == '-')
-		{
-			*str++ = '-';
-			source++;
-			len--;
-		}
-		for (uint32_t i = 0; i < len; i++)
-		{
-			int32_t place = (len - 1) - i;
-			*str++ = source[i];
-			if (place && (place % 3) == 0) *str++ = ',';
-		}
-		*str = 0;
-
-		return dest;
-	}
-
-
-	static const char *getDateString(time_t t)
-	{
-		static char scratch[1024];
-		struct tm *gtm = gmtime(&t);
-		//	strftime(scratch, 1024, "%m, %d, %Y", gtm);
-		sprintf(scratch, "%4d-%02d-%02d", gtm->tm_year + 1900, gtm->tm_mon + 1, gtm->tm_mday);
-		return scratch;
-	}
-
-	static void printReverseHash(const uint8_t *hash)
-	{
-		if (hash)
-		{
-			for (uint32_t i = 0; i < 32; i++)
-			{
-				printf("%02x", hash[31 - i]);
-			}
-		}
-		else
-		{
-			printf("NULL HASH");
-		}
-	}
-
-
 	typedef std::vector< uint64_t > TransactionVector;
 
 	// A 256 bit hash
@@ -129,15 +68,26 @@ namespace PUBLIC_KEY_DATABASE
 		uint64_t	mWord3;
 	};
 
+	class PublicKeyData
+	{
+	public:
+		bool operator==(const PublicKeyData &other) const
+		{
+			return memcmp(address, other.address, sizeof(address)) == 0;
+		}
 
-	class PublicKey : public BlockChain::OutputAddress
+		uint8_t address[25];
+	};
+
+
+	class PublicKey : public PublicKeyData
 	{
 	public:
 		PublicKey(void)
 		{
 		}
 
-		PublicKey(const BlockChain::OutputAddress &h) : BlockChain::OutputAddress(h)
+		PublicKey(const PublicKeyData &h) : PublicKeyData(h)
 		{
 			mCRC = CRC32(address, sizeof(address), sizeof(address));
 		}
@@ -147,8 +97,8 @@ namespace PUBLIC_KEY_DATABASE
 		{
 			if (mCRC == other.mCRC) // if they have the same CRC value...
 			{
-				const BlockChain::OutputAddress &a = *this;
-				const BlockChain::OutputAddress &b = other;
+				const PublicKeyData &a = *this;
+				const PublicKeyData &b = other;
 				return a == b;
 			}
 			return false;
@@ -160,6 +110,130 @@ namespace PUBLIC_KEY_DATABASE
 		}
 		uint32_t	mIndex;
 		uint32_t	mCRC;
+	};
+
+	// Data we would like to accumulate
+	// First, is it a spend or a receive transaction
+	// How much value is involved
+	// What is the timestamp
+
+	class PublicKeyTransaction
+	{
+	public:
+		PublicKeyTransaction(void) : mTransactionOffset(0)
+			, mValue(0)
+			, mTimeStamp(0)
+			, mSpend(false)
+			, mCoinbase(false)
+			, mChange(false)
+		{
+
+		}
+		uint64_t	mTransactionOffset;		// The file offset location to the full transaction details
+		uint64_t	mValue;					// How much value is in this spend/receive transaction
+		uint32_t	mTimeStamp;				// Time stamp for this transaction
+		bool		mSpend : 1;				// is it a spend transaction?
+		bool		mCoinbase : 1;			// is it a coinbase transaction
+		bool		mChange : 1;			// Whether or not this receive was change (came from ourselves)
+	};
+
+	typedef std::vector< PublicKeyTransaction > PublicKeyTransactionVector;
+
+	// This class represents the collection of all transactions associated with a particular public key
+	class PublicKeyRecord
+	{
+	public:
+
+		uint64_t getBalance(void) const
+		{
+			uint64_t ret = 0;
+			for (auto i = mTransactions.begin(); i != mTransactions.end(); ++i)
+			{
+				const PublicKeyTransaction &t = (*i);
+				if (t.mSpend)
+				{
+					ret -= t.mValue;
+				}
+				else
+				{
+					ret += t.mValue;
+				}
+			}
+			return ret;
+		}
+
+		uint64_t getTotalSend(void) const
+		{
+			uint64_t ret = 0;
+			for (auto i = mTransactions.begin(); i != mTransactions.end(); ++i)
+			{
+				const PublicKeyTransaction &t = (*i);
+				if (t.mSpend)
+				{
+					ret += t.mValue;
+				}
+			}
+			return ret;
+		}
+
+		uint64_t getTotalReceive(void) const
+		{
+			uint64_t ret = 0;
+			for (auto i = mTransactions.begin(); i != mTransactions.end(); ++i)
+			{
+				const PublicKeyTransaction &t = (*i);
+				if (!t.mSpend)
+				{
+					ret += t.mValue;
+				}
+			}
+			return ret;
+		}
+
+		uint32_t getLastSendTime(void) const
+		{
+			uint32_t ret = 0;
+
+			uint32_t count = uint32_t(mTransactions.size());
+			if (count)
+			{
+				uint32_t index = count - 1;
+				for (uint32_t i = 0; i < count; i++, index--)
+				{
+					const PublicKeyTransaction &t = mTransactions[index];
+					if (t.mSpend)
+					{
+						ret = t.mTimeStamp;
+						break;
+					}
+				}
+			}
+			return ret;
+		}
+
+
+		uint32_t getLastReceiveTime(void) const
+		{
+			uint32_t ret = 0;
+
+			uint32_t count = uint32_t(mTransactions.size());
+			if (count)
+			{
+				uint32_t index = count - 1;
+				for (uint32_t i = 0; i < count; i++, index--)
+				{
+					const PublicKeyTransaction &t = mTransactions[index];
+					if (!t.mSpend)
+					{
+						ret = t.mTimeStamp;
+						break;
+					}
+				}
+			}
+			return ret;
+		}
+
+		PublicKeyTransactionVector	mTransactions;		// all transactions in chronological order relative to this public key
 	};
 
 	class TransactionHash : public Hash256
@@ -287,6 +361,8 @@ namespace PUBLIC_KEY_DATABASE
 		{
 			bool ret = true;
 
+			mInputs.clear();
+			mOutputs.clear();
 			size_t r = fread(mTransactionHash, sizeof(mTransactionHash), 1, fph);		// Write out the transaction hash
 			if (r != 1)
 			{
@@ -300,12 +376,14 @@ namespace PUBLIC_KEY_DATABASE
 				fread(&mLockTime, sizeof(mLockTime), 1, fph);						// Write out the lock-time of this transaction.
 				uint32_t count;
 				fread(&count, sizeof(count), 1, fph);
+				mInputs.reserve(count);
 				for (uint32_t i = 0; i < count; i++)
 				{
 					TransactionInput ti(fph);
 					mInputs.push_back(ti);
 				}
 				fread(&count, sizeof(count), 1, fph);
+				mOutputs.reserve(count);
 				for (uint32_t i = 0; i < count; i++)
 				{
 					TransactionOutput to(fph);
@@ -352,25 +430,25 @@ namespace PUBLIC_KEY_DATABASE
 
 		void echo(void)
 		{
-			printf("===============================================================================================================================\r\n");
-			printf("TransactionHash: ");
+			logMessage("===============================================================================================================================\r\n");
+			logMessage("TransactionHash: ");
 			printReverseHash(mTransactionHash);
-			printf("\r\n");
-			printf("BlockNumber: %d\r\n", mBlockNumber);
-			printf("TransactionVersionNumber: %d\r\n", mTransactionVersionNumber);
-			printf("TransactionTime: %s\r\n", getDateString(time_t(mTransactionTime)));
-			printf("InputCount: %d\r\n", mInputs.size());
+			logMessage("\r\n");
+			logMessage("BlockNumber: %d\r\n", mBlockNumber);
+			logMessage("TransactionVersionNumber: %d\r\n", mTransactionVersionNumber);
+			logMessage("TransactionTime: %s\r\n", getDateString(time_t(mTransactionTime)));
+			logMessage("InputCount: %d\r\n", mInputs.size());
 			for (size_t i = 0; i < mInputs.size(); i++)
 			{
 				mInputs[i].echo();
 			}
-			printf("OutputCount: %d\r\n", mOutputs.size());
+			logMessage("OutputCount: %d\r\n", mOutputs.size());
 			for (size_t i = 0; i < mOutputs.size(); i++)
 			{
 				mOutputs[i].echo();
 			}
-			printf("===============================================================================================================================\r\n");
-			printf("\r\n");
+			logMessage("===============================================================================================================================\r\n");
+			logMessage("\r\n");
 		}
 
 		uint8_t						mTransactionHash[32];				// The transaction hash
@@ -409,6 +487,9 @@ namespace std
 namespace PUBLIC_KEY_DATABASE
 {
 
+#define TRANSACTION_FILE_NAME "TransactionFile.bin"
+#define PUBLIC_KEY_FILE_NAME "PublicKeys.bin"
+
 	typedef std::unordered_set< PublicKey >			PublicKeySet;			// The unordered set of all public keys
 	typedef std::unordered_set< TransactionHash >	TransactionHashSet;		// The unordered set of all transactions; only contains the file seek offset
 
@@ -417,15 +498,26 @@ namespace PUBLIC_KEY_DATABASE
 	class PublicKeyDatabaseImpl : public PublicKeyDatabase
 	{
 	public:
-		PublicKeyDatabaseImpl(void)
+		PublicKeyDatabaseImpl(bool analyze) : mPublicKeyCount(0), mTransactionFile(nullptr), mAnalyze(analyze), mAddresses(nullptr), mRecords(nullptr)
 		{
-			mPublicKeyCount = 0;
-			mTransactionFile = fopen("TransactionFile.bin", "wb");
-			if (mTransactionFile)
+			if (analyze)
 			{
-				size_t slen = strlen(magicID);
-				fwrite(magicID, slen + 1, 1, mTransactionFile); 
-				fflush(mTransactionFile);
+				openTransactionsFile();
+				loadPublicKeyFile();
+			}
+			else
+			{
+				mTransactionFile = fopen(TRANSACTION_FILE_NAME, "wb");
+				if (mTransactionFile)
+				{
+					size_t slen = strlen(magicID);
+					fwrite(magicID, slen + 1, 1, mTransactionFile);
+					fflush(mTransactionFile);
+				}
+				else
+				{
+					logMessage("Failed to open file '%s' for write access.\r\n", TRANSACTION_FILE_NAME);
+				}
 			}
 		}
 
@@ -434,12 +526,18 @@ namespace PUBLIC_KEY_DATABASE
 			if (mTransactionFile)
 			{
 				fclose(mTransactionFile);
+				if (!mAnalyze)
+				{
+					savePublicKeyFile();
+				}
 			}
+			delete[]mAddresses;
+			delete[]mRecords;
 		}
 
-		virtual void addBlock(const BlockChain::Block *b)
+		virtual void addBlock(const BlockChain::Block *b) override final
 		{
-			if (!mTransactionFile)
+			if (!mTransactionFile || mAnalyze )
 			{
 				return;
 			}
@@ -472,7 +570,7 @@ namespace PUBLIC_KEY_DATABASE
 				for (uint32_t i = 0; i < bt.outputCount; i++)
 				{
 					const BlockChain::BlockOutput &bo = bt.outputs[i];
-					uint32_t addressIndex = getPublicKeyIndex(bo.addresses[0]);
+					uint32_t addressIndex = getPublicKeyIndex(bo.asciiAddress);
 					t.addOutput(bo,addressIndex);
 				}
 
@@ -491,39 +589,110 @@ namespace PUBLIC_KEY_DATABASE
 		// The purpose of this is so that we can later use this pre-processed database to perform
 		// relatively high speed queries against the blockchain.  Most of the interesting data we want to 
 		// collect is relative to public key addresses
-		virtual void buildPublicKeyDatabase(void)
+		virtual void buildPublicKeyDatabase(void) override final
 		{
-			if (!mTransactionFile) return;
-			fclose(mTransactionFile);
-			printf("Processed %s transactions.\r\n", formatNumber(int32_t(mTransactions.size())));
-			savePublicKeyFile();
-#if 0
-			mTransactionFile = nullptr;
-			mTransactions.clear();		// We no longer need this hash-set of transaction hashes since we have rebased the data based the data based on transaction offset into the datafile
-			if (!openTransactionsFile())
+			if (!mAnalyze)
 			{
-				return;
+				mTransactionFile = nullptr;
+				mTransactions.clear();		// We no longer need this hash-set of transaction hashes since we have rebased the data based the data based on transaction offset into the datafile
+				mPublicKeys.clear();		// We no longer needs this hash set, so free up the memory
+				mAnalyze = true;
+				openTransactionsFile();
+				loadPublicKeyFile();
 			}
+			logMessage("Building PublicKey records.\r\n");
+			uint32_t transactionCount = 0;
 			uint64_t transactionOffset = uint64_t(ftell(mTransactionFile));
 			Transaction t;
 			while (readTransaction(t, transactionOffset))
 			{
-				t.echo();
+				transactionCount++;
+				if ((transactionCount % 1000) == 0)
+				{
+					logMessage("Processing transaction %s\r\n", formatNumber(transactionCount));
+				}
+				uint64_t toffset = transactionOffset; // the base transaction offset
 				transactionOffset = uint64_t(ftell(mTransactionFile));
+				processTransaction(t,toffset);
 				// do stuff here...
 			}
-#endif
+		}
+
+		void processTransaction(const Transaction &t,uint64_t transactionOffset)
+		{
+			bool hasCoinBase = false;
+			for (auto i = t.mInputs.begin(); i != t.mInputs.end(); ++i)
+			{
+				const TransactionInput &ti = (*i);
+				if (ti.mTransactionIndex != 0xFFFFFFFF) // if it is not a coinbase input...
+				{
+					Transaction inputTransaction;
+					readTransaction(inputTransaction, ti.mTransactionFileOffset);
+					assert(ti.mTransactionIndex < inputTransaction.mOutputs.size());
+					TransactionOutput &to = inputTransaction.mOutputs[ti.mTransactionIndex];
+					PublicKeyRecord &record = mRecords[to.mIndex]; // ok...let's get the record
+					PublicKeyTransaction pt;
+					pt.mCoinbase = false;
+					pt.mSpend = true;	// we are spending a previous output here...
+					pt.mTimeStamp = t.mTransactionTime;
+					pt.mTransactionOffset = transactionOffset;
+					pt.mValue = to.mValue;
+					record.mTransactions.push_back(pt);
+				}
+				else
+				{
+					hasCoinBase = true;
+				}
+			}
+
+			for (auto i = t.mOutputs.begin(); i != t.mOutputs.end(); ++i)
+			{
+				const TransactionOutput &to = (*i);
+				PublicKeyTransaction pt;
+				pt.mCoinbase = hasCoinBase;
+				hasCoinBase = false;
+				pt.mSpend = false;
+				pt.mTimeStamp = t.mTransactionTime;
+				pt.mTransactionOffset = transactionOffset;
+				pt.mValue = to.mValue;
+
+				PublicKeyRecord &record = mRecords[to.mIndex]; // ok...let's get the record
+
+				// see if any of the transaction inputs is this output, in which case this gets flagged as 'change'
+				for (auto i = t.mInputs.begin(); i != t.mInputs.end(); ++i)
+				{
+					const TransactionInput &ti = (*i);
+					if (ti.mTransactionIndex != 0xFFFFFFFF) // if it is not a coinbase input...
+					{
+						Transaction inputTransaction;
+						readTransaction(inputTransaction, ti.mTransactionFileOffset);
+						assert(ti.mTransactionIndex < inputTransaction.mOutputs.size());
+						TransactionOutput &pto = inputTransaction.mOutputs[ti.mTransactionIndex];
+						if (pto.mIndex == to.mIndex)
+						{
+							pt.mChange = true;
+							break;
+						}
+					}
+				}
+
+
+
+				record.mTransactions.push_back(pt);
+			}
 		}
 
 		bool readTransaction(Transaction &t, uint64_t transactionOffset)
 		{
 			bool ret = false;
 
-			_fseeki64(mTransactionFile, size_t(transactionOffset), SEEK_SET);
-			uint64_t actual = uint64_t(ftell(mTransactionFile));
-			if (actual == transactionOffset)
 			{
-				ret = t.read(mTransactionFile); // read this transaction 
+				_fseeki64(mTransactionFile, size_t(transactionOffset), SEEK_SET);
+				uint64_t actual = uint64_t(ftell(mTransactionFile));
+				if (actual == transactionOffset)
+				{
+					ret = t.read(mTransactionFile); // read this transaction 
+				}
 			}
 
 			return ret;
@@ -532,8 +701,12 @@ namespace PUBLIC_KEY_DATABASE
 		bool openTransactionsFile(void)
 		{
 			if (mTransactionFile) return false;
-			mTransactionFile = fopen("TransactionFile.bin", "rb");
-			if (mTransactionFile == nullptr) return false;
+			mTransactionFile = fopen(TRANSACTION_FILE_NAME, "rb");
+			if (mTransactionFile == nullptr)
+			{
+				logMessage("Failed to open transaction file '%s' for read access.\r\n", TRANSACTION_FILE_NAME);
+				return false;
+			}
 			size_t slen = strlen(magicID);
 			char *temp = new char[slen + 1];
 			size_t r = fread(temp, slen + 1, 1, mTransactionFile);
@@ -543,14 +716,25 @@ namespace PUBLIC_KEY_DATABASE
 				if (strcmp(temp, magicID) == 0)
 				{
 					ret = true;
+					logMessage("Successfully opened the transaction file '%s' for read access.\r\n", TRANSACTION_FILE_NAME);
 				}
+				else
+				{
+					logMessage("Not a valid transaction invalid header block.\r\n");
+				}
+			}
+			else
+			{
+				logMessage("Not a valid transaction file failed to read header.\r\n");
 			}
 			delete[]temp;
 			return ret;
 		}
 
-		uint32_t getPublicKeyIndex(const BlockChain::OutputAddress &a)
+		uint32_t getPublicKeyIndex(const char *asciiAddress)
 		{
+			PublicKeyData a;
+			bitcoinAsciiToAddress(asciiAddress, a.address);
 			uint32_t ret;
 			mPublicKeyCount++;
 			PublicKey key(a);
@@ -570,22 +754,23 @@ namespace PUBLIC_KEY_DATABASE
 
 		void savePublicKeyFile(void)
 		{
-			FILE *fph = fopen("PublicKeys.bin", "wb");
+			logMessage("Processed %s transactions.\r\n", formatNumber(int32_t(mTransactions.size())));
+			FILE *fph = fopen(PUBLIC_KEY_FILE_NAME, "wb");
 			if (fph)
 			{
 				size_t slen = strlen(magicID);
 				fwrite(magicID, slen + 1, 1, fph);
 				uint32_t count = uint32_t(mPublicKeys.size());
-				printf("Saving %s unique public keys from %s keys encountered; saving a total of %s\r\n", formatNumber(count), formatNumber(mPublicKeyCount), formatNumber(mPublicKeyCount - count));
-				printf("Saving %s public key headers\r\n", formatNumber(count));
+				logMessage("Saving %s unique public keys from %s keys encountered; saving a total of %s\r\n", formatNumber(count), formatNumber(mPublicKeyCount), formatNumber(mPublicKeyCount - count));
 				fwrite(&count, sizeof(count), 1, fph);
+
 				uint64_t baseLoc = ftell(fph);
-				BlockChain::OutputAddress a;
+				PublicKeyData a;
 				for (uint32_t i = 0; i < count; i++)
 				{
 					fwrite(&a, sizeof(a), 1, fph);
 				}
-				printf("Saving %s public key blocks\r\n", formatNumber(count));
+				logMessage("Saving %s public key blocks\r\n", formatNumber(count));
 				for (PublicKeySet::iterator i = mPublicKeys.begin(); i != mPublicKeys.end(); ++i)
 				{
 					const PublicKey &key = (*i);
@@ -596,23 +781,168 @@ namespace PUBLIC_KEY_DATABASE
 				}
 				fclose(fph);
 			}
+			else
+			{
+				logMessage("Failed to open file '%s' for write access\r\n", PUBLIC_KEY_FILE_NAME);
+			}
 		}
 
-		virtual void release(void)
+		bool loadPublicKeyFile(void)
+		{
+			bool ret = false;
+
+			delete[]mAddresses;
+			mAddresses = nullptr;
+			delete[]mRecords;
+			mRecords = nullptr;
+
+			FILE *fph = fopen(PUBLIC_KEY_FILE_NAME, "rb");
+			if (fph == nullptr)
+			{
+				logMessage("Failed to open public key file '%s' for read access.\r\n", PUBLIC_KEY_FILE_NAME);
+				return false;
+			}
+			size_t slen = strlen(magicID);
+			char *temp = new char[slen + 1];
+			size_t r = fread(temp, slen + 1, 1, fph);
+			if (r == 1)
+			{
+				if (strcmp(temp, magicID) == 0)
+				{
+					logMessage("Successfully opened the public key file '%s' for read access.\r\n", PUBLIC_KEY_FILE_NAME);
+					r = fread(&mPublicKeyCount, sizeof(mPublicKeyCount), 1, fph);
+					if (r == 1)
+					{
+						logMessage("Reading in %s public keys.\r\n", formatNumber(mPublicKeyCount));
+						mAddresses = new PublicKeyData[mPublicKeyCount];
+						mRecords = new PublicKeyRecord[mPublicKeyCount];
+						r = fread(mAddresses, sizeof(PublicKeyData)*mPublicKeyCount, 1, fph);
+						if (r == 1)
+						{
+							ret = true;
+							logMessage("Successfully read all public keys into memory.\r\n");
+						}
+						else
+						{
+							logMessage("Failed to read all public keys into memory!\r\n");
+							delete[]mAddresses;
+							mAddresses = nullptr;
+						}
+					}
+					else
+					{
+						logMessage("Failed to read from public key file.\r\n");
+					}
+				}
+				else
+				{
+					logMessage("Not a valid header block.\r\n");
+				}
+			}
+			else
+			{
+				logMessage("Not a valid file failed to read header.\r\n");
+			}
+			delete[]temp;
+			fclose(fph);
+
+			return ret;
+		}
+
+
+
+		virtual void release(void) override final
 		{
 			delete this;
 		}
+
+		bool isValid(void) const
+		{
+			return mTransactionFile ? true : false;
+		}
+
+		// Accessors methods for the public key database
+		virtual uint32_t getPublicKeyCount(void)
+		{
+			return mPublicKeyCount;
+		}
+
+		virtual void printPublicKey(uint32_t index)
+		{
+			assert(index < mPublicKeyCount);
+			PublicKeyRecord &r = mRecords[index];
+			PublicKeyData &a = mAddresses[index];
+			logMessage("==========================================================\r\n");
+
+			logBitcoinAddress(a.address);
+			logMessage("\r\n");
+			logMessage("%s total transaction on this address.\r\n", formatNumber(int32_t(r.mTransactions.size())));
+
+			uint64_t totalSend = r.getTotalSend();
+			if (totalSend)
+			{
+				logMessage("Total Value Sent: %0.2f\r\n", float(totalSend) / ONE_BTC);
+			}
+			logMessage("Total Value Received: %0.2f\r\n", float(r.getTotalReceive()) / ONE_BTC);
+			logMessage("Balance: %0.2f\r\n", float(r.getBalance()) / ONE_BTC);
+			uint32_t lastSendTime = r.getLastSendTime();
+			if (lastSendTime)
+			{
+				logMessage("LastSend: %s\r\n", getTimeString(lastSendTime));
+			}
+			uint32_t lastReceiveTime = r.getLastReceiveTime();
+			if (lastReceiveTime)
+			{
+				logMessage("LastReceive: %s\r\n", getTimeString(lastReceiveTime));
+			}
+
+			uint32_t count = uint32_t(r.mTransactions.size());
+			for (uint32_t i = 0; i<count; i++)
+			{
+				PublicKeyTransaction &t = r.mTransactions[i];
+				const char *prefix = "";
+				if (t.mSpend)
+				{
+					prefix = "Send";
+				}
+				else
+				{
+					if (t.mCoinbase)
+					{
+						prefix = "Coinbase";
+					}
+					else
+					{
+						prefix = t.mChange ? "Change" : "Receive";
+					}
+				}
+				logMessage("%10s : %10s : %0.2f \r\n", prefix, getTimeString(t.mTimeStamp), float(t.mValue) / ONE_BTC );
+			}
+
+
+			logMessage("==========================================================\r\n");
+			logMessage("\r\n");
+		}
+
 	private:
-		uint32_t			mPublicKeyCount;
-		PublicKeySet		mPublicKeys;		// the list of public keys...
-		TransactionHashSet	mTransactions;		// The list of all transaction hashes
-		FILE				*mTransactionFile;	// The data file which holds all transactions; too large to fit into memory
+		bool						mAnalyze;
+		TransactionHashSet			mTransactions;		// The list of all transaction hashes
+		FILE						*mTransactionFile;	// The data file which holds all transactions; too large to fit into memory
+		uint32_t					mPublicKeyCount;
+		PublicKeySet				mPublicKeys;		// the list of public keys...
+		PublicKeyData				*mAddresses;
+		PublicKeyRecord				*mRecords;			// The accumulated and collated data set for all public keys
 	};
 
 }
 
-PublicKeyDatabase * PublicKeyDatabase::create(void)
+PublicKeyDatabase * PublicKeyDatabase::create(bool analyze)
 {
-	PUBLIC_KEY_DATABASE::PublicKeyDatabaseImpl *p = new PUBLIC_KEY_DATABASE::PublicKeyDatabaseImpl;
+	PUBLIC_KEY_DATABASE::PublicKeyDatabaseImpl *p = new PUBLIC_KEY_DATABASE::PublicKeyDatabaseImpl(analyze);
+	if (!p->isValid())
+	{
+		p->release();
+		p = nullptr;
+	}
 	return static_cast<PublicKeyDatabase *>(p);
 }

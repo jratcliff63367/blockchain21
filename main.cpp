@@ -8,11 +8,7 @@
 #include <time.h>
 #include "RIPEMD160.h"
 
-#define BUILD_PUBLIC_KEY_DATABASE 0
-
-#if BUILD_PUBLIC_KEY_DATABASE
 #include "PublicKeyDatabase.h"
-#endif
 
 
 #ifdef WIN32
@@ -25,6 +21,7 @@
 
 int main(int argc,const char **argv)
 {
+	bool analyze = false;
 	uint32_t maxBlocks = 10000000;
 	uint32_t searchForTextLength = 0;
 	const char *dataPath = ".";
@@ -56,7 +53,11 @@ int main(int argc,const char **argv)
 					printf("Error parsing option '-max_blocks', missing block number.\n");
 				}
 			}
-			if (strcmp(option, "-text") == 0)
+			else if (strcmp(option, "-analyze") == 0)
+			{
+				analyze = true;
+			}
+			else if (strcmp(option, "-text") == 0)
 			{
 				i++;
 				if (i < argc)
@@ -96,62 +97,71 @@ int main(int argc,const char **argv)
 		}
 		i++;
 	}
-	BlockChain *b = BlockChain::createBlockChain(dataPath,maxBlocks);
-	if (b)
+
+	PublicKeyDatabase *p = PublicKeyDatabase::create(analyze);
+	if (p)
 	{
-#if BUILD_PUBLIC_KEY_DATABASE
-		PublicKeyDatabase *p = PublicKeyDatabase::create();
-#endif
-		b->setSearchTextLength(searchForTextLength);
-		printf("Scanning the blockchain for blocks.\r\n");
-		for (;;)
+		if (analyze)
 		{
-			uint32_t lastBlockRead;
-			bool finished = b->scanBlockChain(lastBlockRead);
-			if ( finished )
+			p->buildPublicKeyDatabase();
+			uint32_t keyCount = p->getPublicKeyCount();
+			for (uint32_t i = 0; i < keyCount; i++)
 			{
-				break;
+				p->printPublicKey(i);
 			}
-			else
+		}
+		else
+		{
+			BlockChain *b = BlockChain::createBlockChain(dataPath, maxBlocks);
+			if (b)
 			{
-				if ((lastBlockRead % 1000) == 0)
+				b->setSearchTextLength(searchForTextLength);
+				printf("Scanning the blockchain for blocks.\r\n");
+				for (;;)
 				{
-					printf("Scanned block header: %d\r\n", lastBlockRead);
+					uint32_t lastBlockRead;
+					bool finished = b->scanBlockChain(lastBlockRead);
+					if (finished)
+					{
+						break;
+					}
+					else
+					{
+						if ((lastBlockRead % 1000) == 0)
+						{
+							printf("Scanned block header: %d\r\n", lastBlockRead);
+						}
+					}
 				}
+				printf("Finished scanning the available blocks.\r\n");
+				printf("Now building the blockchain\r\n");
+				uint32_t ret = b->buildBlockChain();
+				printf("Found %d blocks.\r\n", ret);
+				for (uint32_t i = 0; i < ret; i++)
+				{
+					if (((i + 1) % 100) == 0)
+					{
+						printf("Processing block: %d\r\n", i);
+					}
+					const BlockChain::Block *block = b->readBlock(i);
+					if (block == nullptr)
+					{
+						printf("Finished reading blocks.\r\n");
+						break;
+					}
+					else
+					{
+						p->addBlock(block);
+						//					b->printBlock(block);
+					}
+				}
+				b->release(); // release the blockchain parser
 			}
+			printf("Completed parsing the blockchain.\r\n");
 		}
-		printf("Finished scanning the available blocks.\r\n");
-		printf("Now building the blockchain\r\n");
-		uint32_t ret = b->buildBlockChain();
-		printf("Found %d blocks.\r\n", ret);
-		for (uint32_t i = 0; i < ret; i++)
-		{
-			if (((i + 1) % 100) == 0)
-			{
-				printf("Processing block: %d\r\n", i);
-			}
-			const BlockChain::Block *block = b->readBlock(i);
-			if (block == nullptr)
-			{
-				printf("Finished reading blocks.\r\n");
-				break;
-			}
-			else
-			{
-#if BUILD_PUBLIC_KEY_DATABASE
-				p->addBlock(block);
-#else
-				b->printBlock(block);
-#endif
-			}
-		}
-#if BUILD_PUBLIC_KEY_DATABASE
-		printf("Building the PublicKeyDatabase\r\n");
-		p->buildPublicKeyDatabase();
 		p->release();
-#endif
 	}
-	printf("Completed parsing the blockchain.\r\n");
+
 #ifdef WIN32
 //	getch();
 #endif
