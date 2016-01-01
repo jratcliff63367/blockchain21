@@ -51,7 +51,7 @@
       <AdditionalOptions>/W4</AdditionalOptions>
       <Optimization>Disabled</Optimization>
       <AdditionalIncludeDirectories>./../../config;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;UNICODE=1;_CRT_SECURE_NO_DEPRECATE;OPEN_SOURCE=1;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;UNICODE=1;_CRT_SECURE_NO_DEPRECATE;OPEN_SOURCE=1;_DEBUG;_ITERATOR_DEBUG_LEVEL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <WarningLevel>Level3</WarningLevel>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
@@ -122,7 +122,11 @@
     </ClInclude>
     <ClInclude Include="..\..\CRC32.h">
     </ClInclude>
-    <ClInclude Include="..\..\logging.h" />
+    <ClInclude Include="..\..\FileInterface.h" />
+    <ClInclude Include="..\..\logging.h">
+    </ClInclude>
+    <ClInclude Include="..\..\MemoryMap.h">
+    </ClInclude>
     <ClInclude Include="..\..\PublicKeyDatabase.h">
     </ClInclude>
     <ClInclude Include="..\..\RIPEMD160.h">
@@ -137,8 +141,12 @@
     </ClCompile>
     <ClCompile Include="..\..\CRC32.cpp">
     </ClCompile>
-    <ClCompile Include="..\..\logging.cpp" />
+    <ClCompile Include="..\..\FileInterface.cpp" />
+    <ClCompile Include="..\..\logging.cpp">
+    </ClCompile>
     <ClCompile Include="..\..\main.cpp">
+    </ClCompile>
+    <ClCompile Include="..\..\MemoryMap.cpp">
     </ClCompile>
     <ClCompile Include="..\..\PublicKeyDatabase.cpp">
     </ClCompile>

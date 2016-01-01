@@ -103,7 +103,7 @@ int main(int argc,const char **argv)
 	{
 		if (analyze)
 		{
-			p->buildPublicKeyDatabase();
+//			p->buildPublicKeyDatabase();
 			uint32_t keyCount = p->getPublicKeyCount();
 			for (uint32_t i = 0; i < keyCount; i++)
 			{
@@ -155,9 +155,11 @@ int main(int argc,const char **argv)
 						//					b->printBlock(block);
 					}
 				}
+				printf("Completed parsing the blockchain.\r\n");
+				printf("Now building the public-key records database.\r\n");
+				p->buildPublicKeyDatabase();
 				b->release(); // release the blockchain parser
 			}
-			printf("Completed parsing the blockchain.\r\n");
 		}
 		p->release();
 	}

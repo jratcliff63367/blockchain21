@@ -17,6 +17,12 @@
 		<ClInclude Include="..\..\CRC32.h">
 			<Filter>blockchain21</Filter>
 		</ClInclude>
+		<ClInclude Include="..\..\logging.h">
+			<Filter>blockchain21</Filter>
+		</ClInclude>
+		<ClInclude Include="..\..\MemoryMap.h">
+			<Filter>blockchain21</Filter>
+		</ClInclude>
 		<ClInclude Include="..\..\PublicKeyDatabase.h">
 			<Filter>blockchain21</Filter>
 		</ClInclude>
@@ -38,7 +44,13 @@
 		<ClCompile Include="..\..\CRC32.cpp">
 			<Filter>blockchain21</Filter>
 		</ClCompile>
+		<ClCompile Include="..\..\logging.cpp">
+			<Filter>blockchain21</Filter>
+		</ClCompile>
 		<ClCompile Include="..\..\main.cpp">
+			<Filter>blockchain21</Filter>
+		</ClCompile>
+		<ClCompile Include="..\..\MemoryMap.cpp">
 			<Filter>blockchain21</Filter>
 		</ClCompile>
 		<ClCompile Include="..\..\PublicKeyDatabase.cpp">

@@ -19,9 +19,9 @@ public:
 
 	// Add this block to our optimized transaction database
 	virtual void addBlock(const BlockChain::Block *b) = 0;
-	
-	virtual void buildPublicKeyDatabase(void) = 0;
 
+	virtual void buildPublicKeyDatabase(void) = 0;
+	
 	// Accessors methods for the public key database
 	virtual uint32_t getPublicKeyCount(void) = 0;
 	virtual void printPublicKey(uint32_t index) = 0;

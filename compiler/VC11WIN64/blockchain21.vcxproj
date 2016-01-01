@@ -119,6 +119,10 @@
 		</ClInclude>
 		<ClInclude Include="..\..\CRC32.h">
 		</ClInclude>
+		<ClInclude Include="..\..\logging.h">
+		</ClInclude>
+		<ClInclude Include="..\..\MemoryMap.h">
+		</ClInclude>
 		<ClInclude Include="..\..\PublicKeyDatabase.h">
 		</ClInclude>
 		<ClInclude Include="..\..\RIPEMD160.h">
@@ -133,7 +137,11 @@
 		</ClCompile>
 		<ClCompile Include="..\..\CRC32.cpp">
 		</ClCompile>
+		<ClCompile Include="..\..\logging.cpp">
+		</ClCompile>
 		<ClCompile Include="..\..\main.cpp">
+		</ClCompile>
+		<ClCompile Include="..\..\MemoryMap.cpp">
 		</ClCompile>
 		<ClCompile Include="..\..\PublicKeyDatabase.cpp">
 		</ClCompile>
