@@ -855,11 +855,6 @@ namespace PUBLIC_KEY_DATABASE
 				for (uint64_t i = 0; i < mPublicKeyCount; i++)
 				{
 					seekLocations[i] = uint64_t(fi_ftell(fph)); // remember the offset for this record...
-					if (i)
-					{
-						uint64_t diff = seekLocations[i] - seekLocations[i - 1];
-						assert(diff == sizeof(PublicKeyRecordFile));
-					}
 					records[i].save(fph);
 				}
 				fi_fseek(fph, seekLocationsStart, SEEK_SET);	// Seek back to the start of the offsets table in the file
