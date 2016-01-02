@@ -121,3 +121,10 @@ void logBitcoinAddress(const uint8_t address[25])
 	bitcoinAddressToAscii(address, temp, 512);
 	logMessage("%s", temp);
 }
+
+const char *getBitcoinAddressAscii(const uint8_t address[25])
+{
+	static char temp[512];
+	bitcoinAddressToAscii(address, temp, 512);
+	return temp;
+}

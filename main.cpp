@@ -103,12 +103,7 @@ int main(int argc,const char **argv)
 	{
 		if (analyze)
 		{
-//			p->buildPublicKeyDatabase();
-			uint32_t keyCount = p->getPublicKeyCount();
-			for (uint32_t i = 0; i < keyCount; i++)
-			{
-				p->printPublicKey(i);
-			}
+			p->reportTopBalances("TopBalances.csv", 100, 0xFFFFFFFF);
 		}
 		else
 		{
@@ -152,7 +147,16 @@ int main(int argc,const char **argv)
 					else
 					{
 						p->addBlock(block);
-						//					b->printBlock(block);
+
+						if (kbhit())
+						{
+							int c = getch();
+							if (c == 27)
+							{
+								break;
+							}
+						}
+
 					}
 				}
 				printf("Completed parsing the blockchain.\r\n");

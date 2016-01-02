@@ -2,6 +2,7 @@
 #include "BitcoinAddress.h"
 #include "FileInterface.h"
 #include "logging.h"
+#include "HeapSort.h"
 
 #include "CRC32.h"
 
@@ -14,7 +15,7 @@
 
 #define ONE_BTC 100000000
 #define ONE_MBTC (ONE_BTC/1000)
-
+#define SECONDS_PER_DAY (60*60*24)
 
 #ifdef _MSC_VER
 #pragma warning(disable:4100 4996 4189)
@@ -22,6 +23,26 @@
 
 namespace PUBLIC_KEY_DATABASE
 {
+
+	const uint32_t BITCOIN_START_DATE = 1231006505;
+
+	uint32_t getAgeInDays(uint32_t timestamp)
+	{
+		uint32_t diff = timestamp - BITCOIN_START_DATE;
+		uint32_t days = diff / SECONDS_PER_DAY;
+		return days;
+	}
+
+	uint32_t getAgeInDaysCurrent(uint32_t timestamp)
+	{
+		time_t t;
+		time(&t);
+		uint32_t diff = uint32_t(t) - timestamp;
+		uint32_t days = diff / SECONDS_PER_DAY;
+		return days;
+	}
+
+
 	typedef std::vector< uint64_t > TransactionVector;
 
 	// A 256 bit hash
@@ -136,7 +157,7 @@ namespace PUBLIC_KEY_DATABASE
 		bool		mSpend : 1;				// 24 : is it a spend transaction?
 		bool		mCoinbase : 1;			// is it a coinbase transaction
 		bool		mChange : 1;			// Whether or not this receive was change (came from ourselves)
-		uint64_t	mPadding;				// 8 bytes of padding
+		uint64_t	mBalance;				// 8  : 
 	};
 
 	typedef std::vector< PublicKeyTransaction > PublicKeyTransactionVector;
@@ -151,8 +172,13 @@ namespace PUBLIC_KEY_DATABASE
 			fi_fwrite(&mIndex, sizeof(mIndex), 1, fph);
 			uint32_t count = uint32_t(mTransactions.size());
 			fi_fwrite(&count, sizeof(count), 1, fph);
-			uint32_t padding = 0x0A0B0C0D;
-			fi_fwrite(&padding, sizeof(count), 1, fph);
+			uint32_t padding = 0;
+			uint64_t padding64 = 0;
+			fi_fwrite(&padding, sizeof(padding), 1, fph);
+
+			fi_fwrite(&padding64, sizeof(padding64), 1, fph);	// Will be the balance field in PublicKeyRecordFile
+			fi_fwrite(&padding, sizeof(padding), 1, fph);		// Will be the LastSendTime field in the PublicKeyRecordFile
+			fi_fwrite(&padding, sizeof(padding), 1, fph);		// Will be the LastReceiveTime field in the PublicKeyRecordFile
 			if (count)
 			{
 				PublicKeyTransaction *p = &mTransactions[0];
@@ -171,12 +197,16 @@ namespace PUBLIC_KEY_DATABASE
 	{
 	public:
 
-		uint64_t getBalance(void) const
+		uint64_t getBalance(uint32_t endTime=0xFFFFFFFF) const
 		{
 			uint64_t ret = 0;
 			for (uint32_t i = 0; i < mCount; i++)
 			{
 				const PublicKeyTransaction &t = mTransactions[i];
+				if (t.mTimeStamp > endTime)
+				{
+					break;
+				}
 				if (t.mSpend)
 				{
 					ret -= t.mValue;
@@ -189,12 +219,16 @@ namespace PUBLIC_KEY_DATABASE
 			return ret;
 		}
 
-		uint64_t getTotalSend(void) const
+		uint64_t getTotalSend(uint32_t endTime=0xFFFFFFFF) const
 		{
 			uint64_t ret = 0;
 			for (uint32_t i = 0; i < mCount; i++)
 			{
 				const PublicKeyTransaction &t = mTransactions[i];
+				if (t.mTimeStamp > endTime)
+				{
+					break;
+				}
 				if (t.mSpend)
 				{
 					ret += t.mValue;
@@ -203,12 +237,16 @@ namespace PUBLIC_KEY_DATABASE
 			return ret;
 		}
 
-		uint64_t getTotalReceive(void) const
+		uint64_t getTotalReceive(uint32_t endTime=0xFFFFFFFF) const
 		{
 			uint64_t ret = 0;
 			for (uint32_t i = 0; i < mCount; i++)
 			{
 				const PublicKeyTransaction &t = mTransactions[i];
+				if (t.mTimeStamp > endTime)
+				{
+					break;
+				}
 				if (!t.mSpend)
 				{
 					ret += t.mValue;
@@ -217,7 +255,7 @@ namespace PUBLIC_KEY_DATABASE
 			return ret;
 		}
 
-		uint32_t getLastSendTime(void) const
+		uint32_t getLastSendTime(uint32_t endTime=0xFFFFFFFF) const
 		{
 			uint32_t ret = 0;
 
@@ -228,6 +266,10 @@ namespace PUBLIC_KEY_DATABASE
 				for (uint32_t i = 0; i < count; i++, index--)
 				{
 					const PublicKeyTransaction &t = mTransactions[index];
+					if (t.mTimeStamp > endTime)
+					{
+						continue;
+					}
 					if (t.mSpend)
 					{
 						ret = t.mTimeStamp;
@@ -239,7 +281,7 @@ namespace PUBLIC_KEY_DATABASE
 		}
 
 
-		uint32_t getLastReceiveTime(void) const
+		uint32_t getLastReceiveTime(uint32_t endTime=0xFFFFFFFF) const
 		{
 			uint32_t ret = 0;
 
@@ -250,6 +292,10 @@ namespace PUBLIC_KEY_DATABASE
 				for (uint32_t i = 0; i < count; i++, index--)
 				{
 					const PublicKeyTransaction &t = mTransactions[index];
+					if (t.mTimeStamp > endTime)
+					{
+						continue;
+					}
 					if (!t.mSpend)
 					{
 						ret = t.mTimeStamp;
@@ -260,10 +306,38 @@ namespace PUBLIC_KEY_DATABASE
 			return ret;
 		}
 
+		uint32_t getAge(void)
+		{
+			uint32_t lastTime;
+			if ( mLastSendTime)
+			{
+				lastTime = mLastSendTime;
+			}
+			else
+			{
+				lastTime = mTransactions[0].mTimeStamp;
+			}
+			uint32_t daysOld = getAgeInDaysCurrent(lastTime);
+			return daysOld;
+		}
+
+		void computeBalance(uint32_t endTime=0xFFFFFFFF) // compute the balance, up to this time stamp
+		{
+			mBalance			= getBalance(endTime);
+			mLastSendTime		= getLastSendTime(endTime);
+			mLastReceiveTime	= getLastReceiveTime(endTime);
+			mDaysOld			= getAge();
+		}
+
 		BlockChain::KeyType			mKeyType;			// What type of bitcoin key is this?  Standard, MultiSig, Pay2Hash, Stealth?
 		uint32_t					mIndex;				// Array index for public key
-		uint32_t					mCount;
-		uint32_t					mPadding;			// Must be here because the PublicKeyTransaction is going to be 16 byte aligned!
+		uint32_t					mCount;				// Number of transactions associated with this public key
+		uint32_t					mDaysOld;			// Must be here because the PublicKeyTransaction is going to be 16 byte aligned!
+
+		uint64_t					mBalance;			// 8 bytes Balance.
+		uint32_t					mLastSendTime;		// compute the time of last sent transaction
+		uint32_t					mLastReceiveTime;	// compute the time of the last receive transaction
+
 		PublicKeyTransaction		mTransactions[1];	// This is a bit of a fake; we are accessing this via a memory mapped file so there will be 'mCount' number of actual transactions
 	};
 
@@ -528,6 +602,29 @@ namespace PUBLIC_KEY_DATABASE
 
 	const char *magicID = "0123456789ABCDE";
 
+// Sorting classes
+	class SortByBalance : public HeapSortPointers
+	{
+	public:
+		// -1 less, 0 equal, +1 greater.
+		virtual int32_t compare(void *p1, void *p2) override final
+		{
+			PublicKeyRecordFile *pkr1 = (PublicKeyRecordFile *)p1;
+			PublicKeyRecordFile *pkr2 = (PublicKeyRecordFile *)p2;
+			if (pkr1->mBalance < pkr2->mBalance)
+			{
+				return 1;
+			}
+			if (pkr1->mBalance > pkr2->mBalance)
+			{
+				return -1;
+			}
+			return 0;
+		}
+	};
+
+
+
 	class PublicKeyDatabaseImpl : public PublicKeyDatabase
 	{
 	public:
@@ -643,12 +740,17 @@ namespace PUBLIC_KEY_DATABASE
 			{
 				savePublicKeyFile();
 				mTransactionFile = nullptr;
+				logMessage("Clearing transactions container\r\n");
 				mTransactions.clear();		// We no longer need this hash-set of transaction hashes since we have rebased the data based the data based on transaction offset into the datafile
+				logMessage("Clearing PublicKeys container\r\n");
 				mPublicKeys.clear();		// We no longer needs this hash set, so free up the memory
 				mAnalyze = true;
+				logMessage("Opening the transactions file\r\n");
 				openTransactionsFile();
+				logMessage("Loading the PublicKey address file\r\n");
 				loadPublicKeyFile();
 			}
+			logMessage("Creating PublicKey records data  set.\r\n");
 			PublicKeyRecord *records = new PublicKeyRecord[mPublicKeyCount];
 			for (uint32_t i = 0; i < mPublicKeyCount; i++)
 			{
@@ -1046,11 +1148,11 @@ namespace PUBLIC_KEY_DATABASE
 			return mPublicKeyCount;
 		}
 
-		const PublicKeyRecordFile &getPublicKeyRecordFile(uint32_t index)
+		PublicKeyRecordFile &getPublicKeyRecordFile(uint32_t index)
 		{
 			uint64_t offset = mPublicKeyRecordOffsets[index];
-			const uint8_t *ptr = &mPublicKeyRecordBaseAddress[offset];
-			const PublicKeyRecordFile *pkrf = (const PublicKeyRecordFile *)(ptr);
+			uint8_t *ptr = &mPublicKeyRecordBaseAddress[offset];
+			PublicKeyRecordFile *pkrf = (PublicKeyRecordFile *)(ptr);
 			return *pkrf;
 		}
 
@@ -1110,6 +1212,59 @@ namespace PUBLIC_KEY_DATABASE
 			logMessage("==========================================================\r\n");
 			logMessage("\r\n");
 		}
+
+		void initByTime(uint32_t timeStamp)
+		{
+			logMessage("Computing balances up to this date: %s\r\n", getTimeString(timeStamp));
+			for (uint32_t i = 0; i < mPublicKeyCount; i++)
+			{
+				PublicKeyRecordFile &pkrf = getPublicKeyRecordFile(i);
+				pkrf.computeBalance(timeStamp);
+				mPublicKeyRecordSorted[i] = &pkrf;
+			}
+		}
+
+		// Generates the top balance report; writtent to 'TopBalances.txt'
+		virtual void reportTopBalances(const char *reportFileName,uint32_t maxReport,uint32_t timeStamp)
+		{
+			initByTime(timeStamp);
+			logMessage("Finished computing balances for %s public keys.\r\n", formatNumber(mPublicKeyCount));
+			logMessage("Sorting by balance.\r\n");
+			SortByBalance sbb;
+			sbb.heapSort((void **)(mPublicKeyRecordSorted), mPublicKeyCount);
+			FILE *fph = fopen(reportFileName, "wb");
+			if (fph)
+			{
+				fprintf(fph, "PublicKey,Balance,Age\r\n");
+				if (maxReport > mPublicKeyCount)
+				{
+					maxReport = mPublicKeyCount;
+				}
+
+				time_t curTime;
+				time(&curTime);
+
+				for (uint32_t i = 0; i < maxReport; i++)
+				{
+					PublicKeyRecordFile &pkrf = *mPublicKeyRecordSorted[i];
+					PublicKeyData &a = mAddresses[pkrf.mIndex];
+					fprintf(fph, "%s,%0.2f,%d\r\n", getBitcoinAddressAscii(a.address), (float)pkrf.mBalance / ONE_BTC, pkrf.mDaysOld);
+				}
+				fclose(fph);
+			}
+			else
+			{
+				logMessage("Failed to open report file '%s' for write access\r\n");
+			}
+		}
+
+		// Will generate a spreadsheet of bitcoin balances sorted by age of last access
+		virtual void reportByAge(const char *reportName)
+		{
+
+		}
+
+
 
 	private:
 		bool						mAnalyze;

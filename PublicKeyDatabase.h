@@ -26,6 +26,12 @@ public:
 	virtual uint32_t getPublicKeyCount(void) = 0;
 	virtual void printPublicKey(uint32_t index) = 0;
 
+	// Generates the top <n> balances; written to the file named 'reportFileName' on a specific date
+	virtual void reportTopBalances(const char *reportFileName,uint32_t maxReport,uint32_t timeStamp) = 0;
+
+	// Will generate a spreadsheet of bitcoin balances sorted by age of last access
+	virtual void reportByAge(const char *reportName) = 0;
+
 	virtual void release(void) = 0;
 
 protected:
