@@ -376,6 +376,7 @@ namespace PUBLIC_KEY_DATABASE
 			mValue		= bo.value;
 			mIndex		= addressIndex;
 			mKeyType	= bo.keyType;
+			mScriptLength = bo.challengeScriptLength;
 		}
 
 		TransactionOutput(FILE_INTERFACE *fph)
@@ -383,6 +384,7 @@ namespace PUBLIC_KEY_DATABASE
 			fi_fread(&mValue, sizeof(mValue), 1, fph);
 			fi_fread(&mIndex, sizeof(mIndex), 1, fph);
 			fi_fread(&mKeyType, sizeof(mKeyType), 1, fph);
+			fi_fread(&mScriptLength, sizeof(mScriptLength), 1, fph);
 		}
 
 
@@ -391,6 +393,7 @@ namespace PUBLIC_KEY_DATABASE
 			fi_fwrite(&mValue, sizeof(mValue), 1, fph);
 			fi_fwrite(&mIndex, sizeof(mIndex), 1, fph);
 			fi_fwrite(&mKeyType, sizeof(mKeyType), 1, fph);
+			fi_fwrite(&mScriptLength, sizeof(mScriptLength), 1, fph );
 		}
 
 		void echo(void)
@@ -401,6 +404,7 @@ namespace PUBLIC_KEY_DATABASE
 		uint64_t					mValue;		// The value of the output
 		uint32_t					mIndex;		// The array index for this public key (stored in a separate table)
 		BlockChain::KeyType			mKeyType;	// type of key
+		uint32_t					mScriptLength;
 	};
 
 	class TransactionInput
@@ -415,6 +419,7 @@ namespace PUBLIC_KEY_DATABASE
 			mTransactionFileOffset	= fileOffset;
 			mTransactionIndex		= bi.transactionIndex;
 			mInputValue				= bi.inputValue;
+			mResponseScriptLength = bi.responseScriptLength;
 		}
 
 		TransactionInput(FILE_INTERFACE *fph)
@@ -422,6 +427,7 @@ namespace PUBLIC_KEY_DATABASE
 			fi_fread(&mTransactionFileOffset, sizeof(mTransactionFileOffset), 1, fph);
 			fi_fread(&mTransactionIndex, sizeof(mTransactionIndex), 1, fph);
 			fi_fread(&mInputValue, sizeof(mInputValue), 1, fph);
+			fi_fread(&mResponseScriptLength, sizeof(mResponseScriptLength), 1, fph);
 		}
 
 		void save(FILE_INTERFACE *fph)
@@ -429,6 +435,7 @@ namespace PUBLIC_KEY_DATABASE
 			fi_fwrite(&mTransactionFileOffset, sizeof(mTransactionFileOffset), 1, fph);
 			fi_fwrite(&mTransactionIndex, sizeof(mTransactionIndex), 1, fph);
 			fi_fwrite(&mInputValue, sizeof(mInputValue), 1, fph);
+			fi_fwrite(&mResponseScriptLength, sizeof(mResponseScriptLength), 1, fph);
 		}
 
 		void echo(void)
@@ -438,6 +445,7 @@ namespace PUBLIC_KEY_DATABASE
 
 		uint64_t	mTransactionFileOffset;			// Which transaction this input refers to (0 means coinbase)
 		uint32_t	mTransactionIndex;				// Which output forms this input
+		uint32_t	mResponseScriptLength;			// The length of the response script
 		uint64_t	mInputValue;					// The input value
 	};
 
@@ -460,6 +468,7 @@ namespace PUBLIC_KEY_DATABASE
 			mLockTime = t.lockTime;
 			mTransactionTime = transactionTime;
 			mBlockNumber = blockNumber;
+			mTransactionSize = t.transactionLength;
 		}
 
 
@@ -480,6 +489,7 @@ namespace PUBLIC_KEY_DATABASE
 				fi_fread(&mTransactionVersionNumber, sizeof(mTransactionVersionNumber), 1, fph);	// Write out the transaction version number
 				fi_fread(&mTransactionTime, sizeof(mTransactionTime), 1, fph);		// Write out the block-time of this transaction.
 				fi_fread(&mLockTime, sizeof(mLockTime), 1, fph);						// Write out the lock-time of this transaction.
+				fi_fread(&mTransactionSize, sizeof(mTransactionSize), 1, fph);
 				uint32_t count;
 				fi_fread(&count, sizeof(count), 1, fph);
 				mInputs.reserve(count);
@@ -508,6 +518,7 @@ namespace PUBLIC_KEY_DATABASE
 			fi_fwrite(&mTransactionVersionNumber, sizeof(mTransactionVersionNumber), 1, fph);	// Write out the transaction version number
 			fi_fwrite(&mTransactionTime, sizeof(mTransactionTime), 1, fph);		// Write out the block-time of this transaction.
 			fi_fwrite(&mLockTime, sizeof(mLockTime), 1, fph);						// Write out the lock-time of this transaction.
+			fi_fwrite(&mTransactionSize, sizeof(mTransactionSize), 1, fph);
 			uint32_t count = uint32_t(mInputs.size());							// Write out the number of transaction inputs
 			fi_fwrite(&count, sizeof(count), 1, fph);
 			for (uint32_t i = 0; i < count; i++)
@@ -562,6 +573,7 @@ namespace PUBLIC_KEY_DATABASE
 		uint32_t					mTransactionVersionNumber;			// The transaction version number
 		uint32_t					mTransactionTime;					// The time of the transaction (approximate, based on the block time stamp this transaction was contained in)
 		uint32_t					mLockTime;							// The lock time
+		uint32_t					mTransactionSize;					// The size of the transaction (in bytes)
 		TransactionInputVector		mInputs;							// The total number of inputs in the transaction
 		TransactionOutputVector		mOutputs;							// The total number of outputs in the transaction
 	};
@@ -630,6 +642,7 @@ namespace PUBLIC_KEY_DATABASE
 	public:
 		PublicKeyDatabaseImpl(bool analyze) : mPublicKeyCount(0)
 			, mTransactionFile(nullptr)
+			, mPublicKeyFile(nullptr)
 			, mAnalyze(analyze)
 			, mAddresses(nullptr)
 			, mAddressFile(nullptr)
@@ -637,6 +650,9 @@ namespace PUBLIC_KEY_DATABASE
 			, mPublicKeyRecordBaseAddress(nullptr)
 			, mPublicKeyRecordOffsets(nullptr)
 			, mPublicKeyRecordSorted(nullptr)
+			, mTransactionFileCountSeekLocation(0)
+			, mPublicKeyFileCountSeekLocation(0)
+			, mTransactionCount(0)
 		{
 			if (analyze)
 			{
@@ -651,17 +667,33 @@ namespace PUBLIC_KEY_DATABASE
 				{
 					size_t slen = strlen(magicID);
 					fi_fwrite(magicID, slen + 1, 1, mTransactionFile);
+					mTransactionFileCountSeekLocation = uint32_t(fi_ftell(mTransactionFile));
+					fi_fwrite(&mTransactionCount, sizeof(mTransactionCount), 1, mTransactionFile); // save the number of transactions
 					fi_fflush(mTransactionFile);
 				}
 				else
 				{
 					logMessage("Failed to open file '%s' for write access.\r\n", TRANSACTION_FILE_NAME);
 				}
+				mPublicKeyFile = fi_fopen(PUBLIC_KEY_FILE_NAME, "wb", nullptr, 0, false);
+				if (mPublicKeyFile)
+				{
+					size_t slen = strlen(magicID);
+					fi_fwrite(magicID, slen + 1, 1, mPublicKeyFile);
+					mPublicKeyFileCountSeekLocation = uint32_t(fi_ftell(mPublicKeyFile));
+					fi_fwrite(&mPublicKeyCount, sizeof(mPublicKeyCount),1, mPublicKeyFile); // save the number of transactions
+					fi_fflush(mPublicKeyFile);
+				}
+				else
+				{
+					logMessage("Failed to open file '%s' for write access.\r\n", PUBLIC_KEY_FILE_NAME);
+				}
 			}
 		}
 
 		virtual ~PublicKeyDatabaseImpl(void)
 		{
+			logMessage("~PublicKeyDatabaseImpl destructor\r\n");
 			if (mTransactionFile)
 			{
 				fi_fclose(mTransactionFile);
@@ -722,9 +754,21 @@ namespace PUBLIC_KEY_DATABASE
 				Hash256 h(bt.transactionHash);
 				TransactionHash th(h);
 				th.mFileOffset = fileOffset;
-				mTransactions.insert(th);	// Add it to the transaction hash table; so we can convert from a transaction hash to a file offset quickly and efficiently
-			}
 
+				TransactionHashSet::iterator found = mTransactions.find(th);
+				if (found != mTransactions.end() )
+				{
+					logMessage("Encountered the same transaction hash twice; this appears to be a bug and must be fixed! Ignoring second occurence for now.\r\n");
+					logMessage("DuplicateHash:");
+					printReverseHash((const uint8_t *)&th.mWord0);
+					logMessage("\r\n");
+				}
+				else
+				{
+					mTransactionCount++;	// increment the transaction count
+					mTransactions.insert(th);	// Add it to the transaction hash table; so we can convert from a transaction hash to a file offset quickly and efficiently
+				}
+			}
 			fi_fflush(mTransactionFile);
 		}
 
@@ -740,10 +784,13 @@ namespace PUBLIC_KEY_DATABASE
 			{
 				savePublicKeyFile();
 				mTransactionFile = nullptr;
+#if 0
 				logMessage("Clearing transactions container\r\n");
 				mTransactions.clear();		// We no longer need this hash-set of transaction hashes since we have rebased the data based the data based on transaction offset into the datafile
+
 				logMessage("Clearing PublicKeys container\r\n");
 				mPublicKeys.clear();		// We no longer needs this hash set, so free up the memory
+#endif
 				mAnalyze = true;
 				logMessage("Opening the transactions file\r\n");
 				openTransactionsFile();
@@ -896,6 +943,8 @@ namespace PUBLIC_KEY_DATABASE
 				{
 					ret = true;
 					logMessage("Successfully opened the transaction file '%s' for read access.\r\n", TRANSACTION_FILE_NAME);
+					fi_fread(&mTransactionCount, sizeof(mTransactionCount), 1, mTransactionFile);
+					assert(mTransactionCount); // if this is zero then the transaction file didn't close cleanly, we could dervive this value if necessary.
 				}
 				else
 				{
@@ -922,14 +971,14 @@ namespace PUBLIC_KEY_DATABASE
 			{
 				ret = key.mIndex = uint32_t(mPublicKeys.size()); // note, shouldn't have to worry about overflow for this any time soon....
 				mPublicKeys.insert(key);
+				fi_fwrite(a.address, sizeof(a.address), 1, mPublicKeyFile);
+				fi_fflush(mPublicKeyFile);
 				mPublicKeyCount++;
 			}
 			else
 			{
 				ret = (*found).mIndex;
 			}
-
-			assert(ret < mPublicKeyCount);
 
 			return ret;
 		}
@@ -972,36 +1021,31 @@ namespace PUBLIC_KEY_DATABASE
 		// Save all unique public keys
 		void savePublicKeyFile(void)
 		{
-			logMessage("Processed %s transactions.\r\n", formatNumber(int32_t(mTransactions.size())));
-
-			FILE_INTERFACE *fph = fi_fopen(PUBLIC_KEY_FILE_NAME, "wb",nullptr,0,false);
-			if (fph)
+			assert(mTransactionCount == uint32_t(mTransactions.size()));
+			assert(mPublicKeyCount == uint32_t(mPublicKeys.size()));
+			// Write out the total number of transactions and then close the transactions file
+			if (mTransactionFile)
 			{
-				size_t slen = strlen(magicID);
-				fi_fwrite(magicID, slen + 1, 1, fph);	// Write out the magicID header
-				uint32_t count = uint32_t(mPublicKeys.size());
-				assert(count == mPublicKeyCount);
-				fi_fwrite(&count, sizeof(count), 1, fph);	// Write out the number of public keys
-				uint64_t baseLoc = fi_ftell(fph);
-				PublicKeyData a;
-				for (uint32_t i = 0; i < count; i++)
-				{
-					fi_fwrite(&a, sizeof(a), 1, fph);
-				}
-				logMessage("Saving %s public key blocks\r\n", formatNumber(count));
-				for (PublicKeySet::iterator i = mPublicKeys.begin(); i != mPublicKeys.end(); ++i)
-				{
-					const PublicKey &key = (*i);
-					uint64_t index = uint64_t(key.mIndex);
-					uint64_t offset = (index*sizeof(a)) + baseLoc;
-					fi_fseek(fph, offset, SEEK_SET);
-					fi_fwrite(key.address, sizeof(key.address), 1, fph);
-				}
-				fi_fclose(fph);
+				fi_fseek(mTransactionFile, mTransactionFileCountSeekLocation, SEEK_SET);
+				fi_fwrite(&mTransactionCount, sizeof(mTransactionCount), 1, mTransactionFile);
+				fi_fclose(mTransactionFile);
+				mTransactionFile = nullptr;
 			}
 			else
 			{
-				logMessage("Failed to open file '%s' for write access\r\n", PUBLIC_KEY_FILE_NAME);
+				assert(0);
+			}
+			logMessage("Processed %s transactions with %s unique public keys.\r\n", formatNumber(int32_t(mTransactionCount)), formatNumber(int32_t(mPublicKeyCount)));
+			if (mPublicKeyFile)
+			{
+				fi_fseek(mPublicKeyFile, mPublicKeyFileCountSeekLocation, SEEK_SET);
+				fi_fwrite(&mPublicKeyCount, sizeof(mPublicKeyCount), 1, mPublicKeyFile);
+				fi_fclose(mPublicKeyFile);
+				mPublicKeyFile = nullptr;
+			}
+			else
+			{
+				assert(0);
 			}
 		}
 
@@ -1096,6 +1140,7 @@ namespace PUBLIC_KEY_DATABASE
 					r = fi_fread(&publicKeyCount, sizeof(mPublicKeyCount), 1, mPublicKeyRecordFile);
 					if (r == 1)
 					{
+						assert(mPublicKeyCount); // if the public key count is zero; this probably indicates that the file did not close cleanly on creation. We could derive the count if necessary...
 						mPublicKeyCount = publicKeyCount;
 						logMessage("Initializing pointer tables for %s public keys records\r\n", formatNumber(mPublicKeyCount));
 						mPublicKeyRecordOffsets = (const uint64_t *)fi_getCurrentMemoryLocation(mPublicKeyRecordFile);
@@ -1269,8 +1314,12 @@ namespace PUBLIC_KEY_DATABASE
 	private:
 		bool						mAnalyze;
 		TransactionHashSet			mTransactions;		// The list of all transaction hashes
+		FILE_INTERFACE				*mPublicKeyFile;	// The data file which holds all unique public keys
 		FILE_INTERFACE				*mTransactionFile;	// The data file which holds all transactions; too large to fit into memory
 		PublicKeySet				mPublicKeys;		// the list of public keys in an STL set; built during blockchain processing phase
+		uint32_t					mTransactionFileCountSeekLocation;
+		uint32_t					mPublicKeyFileCountSeekLocation;
+		uint32_t					mTransactionCount;
 
 		uint32_t					mPublicKeyCount;	// Total number of unique public keys in the bockchain
 		FILE_INTERFACE				*mAddressFile;		// The memory mapped file for the public-keys

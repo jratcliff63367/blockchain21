@@ -1062,6 +1062,7 @@ public:
 
 	virtual ~BlockChainImpl(void)
 	{
+		logMessage("~BlockChainImpl : Destructor!\r\n");
 		for (FILEVector::iterator i = mBlockDataFiles.begin(); i!=mBlockDataFiles.end(); ++i)
 		{
 			FILE *f = (*i);
@@ -1611,7 +1612,17 @@ public:
 			BlockTransaction &t = block.transactions[i];
 			Hash256 hash(t.transactionHash);
 			FileLocation f(hash,t.fileIndex,t.fileOffset,t.transactionLength,t.transactionIndex);
-			mTransactionSet.insert(f);
+			FileLocationSet::iterator found = mTransactionSet.find(f);
+			if (found == mTransactionSet.end())
+			{
+				mTransactionSet.insert(f);
+			}
+			else
+			{
+				logMessage("DUPLICATE TRANSACTION HASH:");
+				printReverseHash(t.transactionHash);
+				logMessage("\r\n");
+			}
 		}
 
 		// ok.. now make sure we can locate every input transaction!
@@ -1632,7 +1643,7 @@ public:
 					if ( found == mTransactionSet.end() )
 					{
 						block.warning = true;
-						printf("Failed to find transaction!\r\n");
+						logMessage("Failed to find transaction!\r\n");
 						exit(1);
 					}
 				}
