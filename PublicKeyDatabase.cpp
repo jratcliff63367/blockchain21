@@ -662,6 +662,7 @@ namespace PUBLIC_KEY_DATABASE
 			}
 			else
 			{
+				fi_deleteFile(PUBLIC_KEY_RECORDS_FILE_NAME);
 				mTransactionFile = fi_fopen(TRANSACTION_FILE_NAME, "wb",nullptr,0,false);
 				if (mTransactionFile)
 				{
@@ -782,15 +783,13 @@ namespace PUBLIC_KEY_DATABASE
 		{
 			if (!mAnalyze)
 			{
-				savePublicKeyFile();
+				closePublicKeyFile();
 				mTransactionFile = nullptr;
-#if 0
 				logMessage("Clearing transactions container\r\n");
 				mTransactions.clear();		// We no longer need this hash-set of transaction hashes since we have rebased the data based the data based on transaction offset into the datafile
 
 				logMessage("Clearing PublicKeys container\r\n");
 				mPublicKeys.clear();		// We no longer needs this hash set, so free up the memory
-#endif
 				mAnalyze = true;
 				logMessage("Opening the transactions file\r\n");
 				openTransactionsFile();
@@ -839,22 +838,28 @@ namespace PUBLIC_KEY_DATABASE
 				{
 					Transaction inputTransaction;
 					readTransaction(inputTransaction, ti.mTransactionFileOffset);
-					assert(ti.mTransactionIndex < inputTransaction.mOutputs.size());
-					TransactionOutput &to = inputTransaction.mOutputs[ti.mTransactionIndex];
-					if (to.mIndex < mPublicKeyCount)
+					if (ti.mTransactionIndex < inputTransaction.mOutputs.size())
 					{
-						PublicKeyRecord &record = records[to.mIndex]; // ok...let's get the record
-						PublicKeyTransaction pt;
-						pt.mCoinbase = false;
-						pt.mSpend = true;	// we are spending a previous output here...
-						pt.mTimeStamp = t.mTransactionTime;
-						pt.mTransactionOffset = transactionOffset;
-						pt.mValue = to.mValue;
-						record.mTransactions.push_back(pt);
+						TransactionOutput &to = inputTransaction.mOutputs[ti.mTransactionIndex];
+						if (to.mIndex < mPublicKeyCount)
+						{
+							PublicKeyRecord &record = records[to.mIndex]; // ok...let's get the record
+							PublicKeyTransaction pt;
+							pt.mCoinbase = false;
+							pt.mSpend = true;	// we are spending a previous output here...
+							pt.mTimeStamp = t.mTransactionTime;
+							pt.mTransactionOffset = transactionOffset;
+							pt.mValue = to.mValue;
+							record.mTransactions.push_back(pt);
+						}
+						else
+						{
+							logMessage("WARNING! Encountered index to public key #%s but the maximum number of public keys we have is %s\r\n", formatNumber(to.mIndex), formatNumber(mPublicKeyCount));
+						}
 					}
 					else
 					{
-						logMessage("WARNING! Encountered index to public key #%s but the maximum number of public keys we have is %s\r\n", formatNumber(to.mIndex), formatNumber(mPublicKeyCount));
+						logMessage("Invalid transaction index of %d; maximum outputs in this transaction are %d\r\n", ti.mTransactionIndex, inputTransaction.mOutputs.size());
 					}
 				}
 				else
@@ -887,12 +892,14 @@ namespace PUBLIC_KEY_DATABASE
 						{
 							Transaction inputTransaction;
 							readTransaction(inputTransaction, ti.mTransactionFileOffset);
-							assert(ti.mTransactionIndex < inputTransaction.mOutputs.size());
-							TransactionOutput &pto = inputTransaction.mOutputs[ti.mTransactionIndex];
-							if (pto.mIndex == to.mIndex)
+							if (ti.mTransactionIndex < inputTransaction.mOutputs.size())
 							{
-								pt.mChange = true;
-								break;
+								TransactionOutput &pto = inputTransaction.mOutputs[ti.mTransactionIndex];
+								if (pto.mIndex == to.mIndex)
+								{
+									pt.mChange = true;
+									break;
+								}
 							}
 						}
 					}
@@ -1018,14 +1025,16 @@ namespace PUBLIC_KEY_DATABASE
 			}
 		}
 
-		// Save all unique public keys
-		void savePublicKeyFile(void)
+		// Close the unique public keys file
+		void closePublicKeyFile(void)
 		{
 			assert(mTransactionCount == uint32_t(mTransactions.size()));
 			assert(mPublicKeyCount == uint32_t(mPublicKeys.size()));
+
 			// Write out the total number of transactions and then close the transactions file
 			if (mTransactionFile)
 			{
+				logMessage("Closing the transaction file which contains %s transactions.\r\n", formatNumber(mTransactionCount));
 				fi_fseek(mTransactionFile, mTransactionFileCountSeekLocation, SEEK_SET);
 				fi_fwrite(&mTransactionCount, sizeof(mTransactionCount), 1, mTransactionFile);
 				fi_fclose(mTransactionFile);
@@ -1038,6 +1047,7 @@ namespace PUBLIC_KEY_DATABASE
 			logMessage("Processed %s transactions with %s unique public keys.\r\n", formatNumber(int32_t(mTransactionCount)), formatNumber(int32_t(mPublicKeyCount)));
 			if (mPublicKeyFile)
 			{
+				logMessage("Closing the PublicKeys file\r\n");
 				fi_fseek(mPublicKeyFile, mPublicKeyFileCountSeekLocation, SEEK_SET);
 				fi_fwrite(&mPublicKeyCount, sizeof(mPublicKeyCount), 1, mPublicKeyFile);
 				fi_fclose(mPublicKeyFile);
@@ -1137,10 +1147,11 @@ namespace PUBLIC_KEY_DATABASE
 				{
 					logMessage("Successfully opened the public key records file '%s' for read access.\r\n", PUBLIC_KEY_RECORDS_FILE_NAME);
 					uint32_t publicKeyCount = 0;
-					r = fi_fread(&publicKeyCount, sizeof(mPublicKeyCount), 1, mPublicKeyRecordFile);
+					r = fi_fread(&publicKeyCount, sizeof(publicKeyCount), 1, mPublicKeyRecordFile);
 					if (r == 1)
 					{
-						assert(mPublicKeyCount); // if the public key count is zero; this probably indicates that the file did not close cleanly on creation. We could derive the count if necessary...
+						assert(publicKeyCount); // if the public key count is zero; this probably indicates that the file did not close cleanly on creation. We could derive the count if necessary...
+						assert(publicKeyCount == mPublicKeyCount);
 						mPublicKeyCount = publicKeyCount;
 						logMessage("Initializing pointer tables for %s public keys records\r\n", formatNumber(mPublicKeyCount));
 						mPublicKeyRecordOffsets = (const uint64_t *)fi_getCurrentMemoryLocation(mPublicKeyRecordFile);

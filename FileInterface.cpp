@@ -7,6 +7,10 @@
 
 #include "MemoryMap.h"
 
+#ifdef _MSC_VER
+#include <windows.h>
+#endif
+
 #pragma warning(disable:4267)
 
 
@@ -336,7 +340,7 @@ public:
 		uint64_t ret = 0;
 		if ( mFph )
 		{
-			ret = ftell(mFph);
+			ret = _ftelli64(mFph);
 		}
 		else
 		{
@@ -603,5 +607,19 @@ void *	fi_getCurrentMemoryLocation(FILE_INTERFACE *_fph) // only valid for memor
 {
 	_FILE_INTERFACE *fph = (_FILE_INTERFACE *)_fph;
 	return fph->getCurrentMemoryLocation();
+}
+
+bool                fi_deleteFile(const char *fname)
+{
+    bool ret = false;
+
+#ifdef _MSC_VER
+    if (DeleteFileA(fname))
+    {
+        ret = true;
+    }
+#endif
+
+    return ret;
 }
 

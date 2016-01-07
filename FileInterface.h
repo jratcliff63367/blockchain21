@@ -25,6 +25,7 @@ void				fi_clearerr(FILE_INTERFACE *fph);
 void *				fi_getMemBuffer(FILE_INTERFACE *fph,uint64_t *outputLength);  // return the buffer and length of the file.
 bool				fi_usesMemoryMappedFile(FILE_INTERFACE *fph);
 void *				fi_getCurrentMemoryLocation(FILE_INTERFACE *fph); // only valid for memory based files; but will return the address in memory of the current file location
+bool                fi_deleteFile(const char *fname);
 
 
 #endif

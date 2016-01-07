@@ -103,6 +103,7 @@ int main(int argc,const char **argv)
 	{
 		if (analyze)
 		{
+//            p->buildPublicKeyDatabase();
 			p->reportTopBalances("TopBalances.csv", 100, 0xFFFFFFFF);
 		}
 		else
