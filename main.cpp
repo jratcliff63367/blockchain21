@@ -104,6 +104,7 @@ int main(int argc,const char **argv)
 		if (analyze)
 		{
 //            p->buildPublicKeyDatabase();
+			p->reportDailyTransactions("Transactions.csv");
 			p->reportTopBalances("TopBalances.csv", 100, 0xFFFFFFFF);
 		}
 		else

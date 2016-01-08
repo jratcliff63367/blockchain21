@@ -29,6 +29,9 @@ public:
 	// Generates the top <n> balances; written to the file named 'reportFileName' on a specific date
 	virtual void reportTopBalances(const char *reportFileName,uint32_t maxReport,uint32_t timeStamp) = 0;
 
+	// compute the transaction statistics on a daily basis for the entire history of the blockchain
+	virtual void reportDailyTransactions(const char *reportFileName) = 0;
+
 	// Will generate a spreadsheet of bitcoin balances sorted by age of last access
 	virtual void reportByAge(const char *reportName) = 0;
 

@@ -24,7 +24,55 @@
 namespace PUBLIC_KEY_DATABASE
 {
 
-	const uint32_t BITCOIN_START_DATE = 1231006505;
+#define MAXIMUM_DAYS (365*10)	// Leave room for 10 years of days
+
+	class DailyStatistics
+	{
+	public:
+
+		DailyStatistics(void)
+		{
+			memset(this, sizeof(DailyStatistics), 0);
+		}
+
+		uint32_t getMeanInputCount(void) const
+		{
+			return mTransactionCount ? mInputCount / mTransactionCount : 0;
+		}
+
+		uint32_t getMeanOutputCount(void) const
+		{
+			return mTransactionCount ? mOutputCount / mTransactionCount : 0;
+		}
+
+		uint32_t getMeanTransactionSize(void) const
+		{
+			return mTransactionCount ? mTransactionSize / mTransactionCount : 0;
+		}
+
+		uint32_t	mTimeStamp;								// The time stamp for this day
+		uint32_t	mTransactionCount;						// How many transactions happened on this day
+		uint32_t	mInputCount;							// Total number of inputs in all transactions
+		uint32_t	mOutputCount;							// Total number of outputs in all transactions
+		uint32_t	mMaxInputCount;							// Largest number of transaction inputs on this day
+		uint32_t	mMaxOutputCount;						// Largest number of transaction outputs on this day
+		uint32_t	mTransactionSize;						// Size of all transactions on this day
+		uint32_t	mMaxTransactionSize;					// Maximum transaction size on this day
+		uint32_t	mKeyTypeCounts[BlockChain::KT_LAST];	// Counts of various types of keys
+		double		mTotalInputValue;						// Total value of all inputs for this day
+		double		mTotalOutputValue;						// Total value of all outputs for this day
+		uint32_t	mTotalInputScriptLength;				// Total size of all input scripts for this day
+		uint32_t	mTotalOutputScriptLength;				// Total size of all output scripts for this day
+		uint32_t	mMaxInputScriptLength;					// Maximum input script length on this day
+		uint32_t	mMaxOutputScriptLength;					// Maximum output script length on this day
+		uint32_t	mCurrentBlock;							// The current blockf or this day
+		uint32_t	mTransactionBlockCount;					// How many transactions are in the current block
+		uint32_t	mBlockCount;							// Number of blocks on this day
+		uint32_t	mMaxTransactionBlockCount;			// Maximum number of transactions in a block
+	};
+
+
+	const uint32_t BITCOIN_START_DATE = 1231001362;
 
 	uint32_t getAgeInDays(uint32_t timestamp)
 	{
@@ -653,6 +701,8 @@ namespace PUBLIC_KEY_DATABASE
 			, mTransactionFileCountSeekLocation(0)
 			, mPublicKeyFileCountSeekLocation(0)
 			, mTransactionCount(0)
+			, mDailyStatistics(nullptr)
+			, mFirstTransactionOffset(0)
 		{
 			if (analyze)
 			{
@@ -695,6 +745,7 @@ namespace PUBLIC_KEY_DATABASE
 		virtual ~PublicKeyDatabaseImpl(void)
 		{
 			logMessage("~PublicKeyDatabaseImpl destructor\r\n");
+			delete[]mDailyStatistics;
 			if (mTransactionFile)
 			{
 				fi_fclose(mTransactionFile);
@@ -930,10 +981,28 @@ namespace PUBLIC_KEY_DATABASE
 			return ret;
 		}
 
+		bool seekFirstTransaction(void)
+		{
+			if (!mTransactionFile)
+			{
+				return false;
+			}
+			if (!mFirstTransactionOffset)
+			{
+				return false;
+			}
+			fi_fseek(mTransactionFile, mFirstTransactionOffset, SEEK_SET);
+			uint64_t t = fi_ftell(mTransactionFile);
+			return t == mFirstTransactionOffset;
+		}
+
 		// Opens a previously saved transactions file (as a memory mapped file so we don't use up system memory)
 		bool openTransactionsFile(void)
 		{
-			if (mTransactionFile) return false;
+			if (mTransactionFile)
+			{
+				return false;
+			}
 			mTransactionFile = fi_fopen(TRANSACTION_FILE_NAME, "rb",nullptr,0,true);
 			if (mTransactionFile == nullptr)
 			{
@@ -952,6 +1021,7 @@ namespace PUBLIC_KEY_DATABASE
 					logMessage("Successfully opened the transaction file '%s' for read access.\r\n", TRANSACTION_FILE_NAME);
 					fi_fread(&mTransactionCount, sizeof(mTransactionCount), 1, mTransactionFile);
 					assert(mTransactionCount); // if this is zero then the transaction file didn't close cleanly, we could dervive this value if necessary.
+					mFirstTransactionOffset = fi_ftell(mTransactionFile);
 				}
 				else
 				{
@@ -1314,16 +1384,119 @@ namespace PUBLIC_KEY_DATABASE
 			}
 		}
 
+
+		time_t getMonthDayYear(uint32_t month, uint32_t day, uint32_t year)
+		{
+			time_t rawtime;
+			time(&rawtime);
+			struct tm *timeinfo = localtime(&rawtime);
+			timeinfo->tm_year = year - 1900;
+			timeinfo->tm_mon = month - 1;
+			timeinfo->tm_mday = day;
+			return _mkgmtime(timeinfo);
+		}
+
 		// Will generate a spreadsheet of bitcoin balances sorted by age of last access
 		virtual void reportByAge(const char *reportName)
 		{
 
 		}
 
+		// compute the transaction statistics on a daily basis for the entire history of the blockchain
+		virtual void reportDailyTransactions(const char *reportFileName)
+		{
+			delete[]mDailyStatistics;
+			mDailyStatistics = new DailyStatistics[MAXIMUM_DAYS];
+			memset(mDailyStatistics,0,sizeof(DailyStatistics)*MAXIMUM_DAYS);
+			time_t curTime;
+			time(&curTime);		// get the current 'real' time; if we go past it, we stop..
+
+			seekFirstTransaction();
+			uint32_t transactionCount = 0;
+			uint64_t transactionOffset = uint64_t(fi_ftell(mTransactionFile));
+			Transaction t;
+			while (readTransaction(t, transactionOffset))
+			{
+				transactionCount++;
+				if ((transactionCount % 10000) == 0)
+				{
+					logMessage("Processing transaction %s\r\n", formatNumber(transactionCount));
+				}
+				uint64_t toffset = transactionOffset; // the base transaction offset
+				transactionOffset = uint64_t(fi_ftell(mTransactionFile));
+				computeTransactionStatistics(t,toffset);
+			}
+
+			FILE_INTERFACE *fph = fi_fopen(reportFileName, "wb", nullptr, 0, false);
+			if (fph)
+			{
+				logMessage("Generating daily transactions report to file '%s'\r\n", reportFileName);
+				fi_fprintf(fph,"Date,TransactiontCount\r\n");
+				for (uint32_t i = 0; i < MAXIMUM_DAYS; i++)
+				{
+					if (noMoreDays(i))
+					{
+						break;
+					}
+					DailyStatistics &d = mDailyStatistics[i];
+					if (d.mTimeStamp)
+					{
+						fi_fprintf(fph, "%s,%d\r\n", getDateString(d.mTimeStamp), d.mTransactionCount);
+					}
+				}
+				fi_fclose(fph);
+			}
+			else
+			{
+				logMessage("Failed to open file '%s' for write access.\r\n", reportFileName);
+			}
+
+		}
+
+		bool noMoreDays(uint32_t index)
+		{
+			// look for no new data for two weeks in which case, this is EOF
+			bool ret = true;
+
+			for (uint32_t i = 0; i < 7; i++)
+			{
+				uint32_t day = index + i;
+				if (day < MAXIMUM_DAYS)
+				{
+					DailyStatistics &d = mDailyStatistics[index + i];
+					if (d.mTimeStamp)
+					{
+						ret = false;
+						break;
+					}
+				}
+				else
+				{
+					break;
+				}
+			}
+
+			return ret;
+		}
+
+		void computeTransactionStatistics(const Transaction &t, uint64_t toffset)
+		{
+			uint32_t days = getAgeInDays(t.mTransactionTime);
+			assert(days < MAXIMUM_DAYS);
+			DailyStatistics &d = mDailyStatistics[days];
+			d.mTransactionCount++;
+			d.mTransactionSize += t.mTransactionSize;
+			if (d.mTimeStamp == 0)
+			{
+				d.mTimeStamp = t.mTransactionTime;
+			}
+		}
+
 
 
 	private:
 		bool						mAnalyze;
+		uint64_t					mFirstTransactionOffset;	// the first transaction offset
 		TransactionHashSet			mTransactions;		// The list of all transaction hashes
 		FILE_INTERFACE				*mPublicKeyFile;	// The data file which holds all unique public keys
 		FILE_INTERFACE				*mTransactionFile;	// The data file which holds all transactions; too large to fit into memory
@@ -1340,6 +1513,8 @@ namespace PUBLIC_KEY_DATABASE
 		uint8_t						*mPublicKeyRecordBaseAddress;			// The base address of the memory mapped file
 		const uint64_t				*mPublicKeyRecordOffsets;		// Offsets 
 		PublicKeyRecordFile			**mPublicKeyRecordSorted;		// Public key records sorted
+
+		DailyStatistics				*mDailyStatistics; // room to compute daily statistics
 	};
 
 }
