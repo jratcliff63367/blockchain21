@@ -6,8 +6,8 @@
 #include <stdlib.h>
 #include <stdarg.h>
 
-
 #ifdef _MSC_VER
+#include <conio.h>
 #pragma warning(disable:4996)
 #endif
 
@@ -127,4 +127,15 @@ const char *getBitcoinAddressAscii(const uint8_t address[25])
 	static char temp[512];
 	bitcoinAddressToAscii(address, temp, 512);
 	return temp;
+}
+
+uint32_t getKey(void)
+{
+	uint32_t ret = 0;
+
+#ifdef _MSC_VER
+	ret = getch();
+#endif
+
+	return ret;
 }

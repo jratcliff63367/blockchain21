@@ -11,5 +11,6 @@ void printReverseHash(const uint8_t hash[32]);
 void logMessage(const char *fmt, ...);
 void logBitcoinAddress(const uint8_t address[25]);
 const char *getBitcoinAddressAscii(const uint8_t address[25]);
+uint32_t getKey(void);
 
 #endif

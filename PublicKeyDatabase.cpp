@@ -712,32 +712,45 @@ namespace PUBLIC_KEY_DATABASE
 			}
 			else
 			{
-				fi_deleteFile(PUBLIC_KEY_RECORDS_FILE_NAME);
-				mTransactionFile = fi_fopen(TRANSACTION_FILE_NAME, "wb",nullptr,0,false);
-				if (mTransactionFile)
+				uint32_t key = 'y';
+				FILE_INTERFACE *fph = fi_fopen(TRANSACTION_FILE_NAME, "rb", 0, 0, false);
+				if (fph)
 				{
-					size_t slen = strlen(magicID);
-					fi_fwrite(magicID, slen + 1, 1, mTransactionFile);
-					mTransactionFileCountSeekLocation = uint32_t(fi_ftell(mTransactionFile));
-					fi_fwrite(&mTransactionCount, sizeof(mTransactionCount), 1, mTransactionFile); // save the number of transactions
-					fi_fflush(mTransactionFile);
+					fi_fclose(fph);
+					logMessage("A pre-processed transactions database already exists!\r\n");
+					logMessage("Are you sure you want to delete it and start over?\r\n");
+					logMessage("Press 'y' to continue, any other key to cancel.\r\n");
+					key = getKey();
 				}
-				else
+				if (key == 'y')
 				{
-					logMessage("Failed to open file '%s' for write access.\r\n", TRANSACTION_FILE_NAME);
-				}
-				mPublicKeyFile = fi_fopen(PUBLIC_KEY_FILE_NAME, "wb", nullptr, 0, false);
-				if (mPublicKeyFile)
-				{
-					size_t slen = strlen(magicID);
-					fi_fwrite(magicID, slen + 1, 1, mPublicKeyFile);
-					mPublicKeyFileCountSeekLocation = uint32_t(fi_ftell(mPublicKeyFile));
-					fi_fwrite(&mPublicKeyCount, sizeof(mPublicKeyCount),1, mPublicKeyFile); // save the number of transactions
-					fi_fflush(mPublicKeyFile);
-				}
-				else
-				{
-					logMessage("Failed to open file '%s' for write access.\r\n", PUBLIC_KEY_FILE_NAME);
+					fi_deleteFile(PUBLIC_KEY_RECORDS_FILE_NAME);
+					mTransactionFile = fi_fopen(TRANSACTION_FILE_NAME, "wb", nullptr, 0, false);
+					if (mTransactionFile)
+					{
+						size_t slen = strlen(magicID);
+						fi_fwrite(magicID, slen + 1, 1, mTransactionFile);
+						mTransactionFileCountSeekLocation = uint32_t(fi_ftell(mTransactionFile));
+						fi_fwrite(&mTransactionCount, sizeof(mTransactionCount), 1, mTransactionFile); // save the number of transactions
+						fi_fflush(mTransactionFile);
+						mPublicKeyFile = fi_fopen(PUBLIC_KEY_FILE_NAME, "wb", nullptr, 0, false);
+						if (mPublicKeyFile)
+						{
+							size_t slen = strlen(magicID);
+							fi_fwrite(magicID, slen + 1, 1, mPublicKeyFile);
+							mPublicKeyFileCountSeekLocation = uint32_t(fi_ftell(mPublicKeyFile));
+							fi_fwrite(&mPublicKeyCount, sizeof(mPublicKeyCount), 1, mPublicKeyFile); // save the number of transactions
+							fi_fflush(mPublicKeyFile);
+						}
+						else
+						{
+							logMessage("Failed to open file '%s' for write access.\r\n", PUBLIC_KEY_FILE_NAME);
+						}
+					}
+					else
+					{
+						logMessage("Failed to open file '%s' for write access.\r\n", TRANSACTION_FILE_NAME);
+					}
 				}
 			}
 		}
