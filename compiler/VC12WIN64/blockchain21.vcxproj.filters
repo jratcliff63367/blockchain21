@@ -1,71 +1,75 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <ItemGroup>
-    <Filter Include="blockchain21">
-      <!--  -->
-    </Filter>
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="..\..\Base58.h">
-      <Filter>blockchain21</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\BitcoinAddress.h">
-      <Filter>blockchain21</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\BlockChain.h">
-      <Filter>blockchain21</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\CRC32.h">
-      <Filter>blockchain21</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\logging.h">
-      <Filter>blockchain21</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\MemoryMap.h">
-      <Filter>blockchain21</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\PublicKeyDatabase.h">
-      <Filter>blockchain21</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\RIPEMD160.h">
-      <Filter>blockchain21</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\SHA256.h">
-      <Filter>blockchain21</Filter>
-    </ClInclude>
-    <ClCompile Include="..\..\Base58.cpp">
-      <Filter>blockchain21</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\BitcoinAddress.cpp">
-      <Filter>blockchain21</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\BlockChain.cpp">
-      <Filter>blockchain21</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\CRC32.cpp">
-      <Filter>blockchain21</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\logging.cpp">
-      <Filter>blockchain21</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\main.cpp">
-      <Filter>blockchain21</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\MemoryMap.cpp">
-      <Filter>blockchain21</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\PublicKeyDatabase.cpp">
-      <Filter>blockchain21</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\RIPEMD160.cpp">
-      <Filter>blockchain21</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\SHA256.cpp">
-      <Filter>blockchain21</Filter>
-    </ClCompile>
-    <ClInclude Include="..\..\FileInterface.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="..\..\FileInterface.cpp" />
-  </ItemGroup>
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+	<ItemGroup>
+		<Filter Include="blockchain21"><!--  -->
+		</Filter>
+	</ItemGroup>
+	<ItemGroup>
+		<ClInclude Include="..\..\Base58.h">
+			<Filter>blockchain21</Filter>
+		</ClInclude>
+		<ClInclude Include="..\..\BitcoinAddress.h">
+			<Filter>blockchain21</Filter>
+		</ClInclude>
+		<ClInclude Include="..\..\BlockChain.h">
+			<Filter>blockchain21</Filter>
+		</ClInclude>
+		<ClInclude Include="..\..\CRC32.h">
+			<Filter>blockchain21</Filter>
+		</ClInclude>
+		<ClInclude Include="..\..\FileInterface.h">
+			<Filter>blockchain21</Filter>
+		</ClInclude>
+		<ClInclude Include="..\..\HeapSort.h">
+			<Filter>blockchain21</Filter>
+		</ClInclude>
+		<ClInclude Include="..\..\logging.h">
+			<Filter>blockchain21</Filter>
+		</ClInclude>
+		<ClInclude Include="..\..\MemoryMap.h">
+			<Filter>blockchain21</Filter>
+		</ClInclude>
+		<ClInclude Include="..\..\PublicKeyDatabase.h">
+			<Filter>blockchain21</Filter>
+		</ClInclude>
+		<ClInclude Include="..\..\RIPEMD160.h">
+			<Filter>blockchain21</Filter>
+		</ClInclude>
+		<ClInclude Include="..\..\SHA256.h">
+			<Filter>blockchain21</Filter>
+		</ClInclude>
+		<ClCompile Include="..\..\Base58.cpp">
+			<Filter>blockchain21</Filter>
+		</ClCompile>
+		<ClCompile Include="..\..\BitcoinAddress.cpp">
+			<Filter>blockchain21</Filter>
+		</ClCompile>
+		<ClCompile Include="..\..\BlockChain.cpp">
+			<Filter>blockchain21</Filter>
+		</ClCompile>
+		<ClCompile Include="..\..\CRC32.cpp">
+			<Filter>blockchain21</Filter>
+		</ClCompile>
+		<ClCompile Include="..\..\FileInterface.cpp">
+			<Filter>blockchain21</Filter>
+		</ClCompile>
+		<ClCompile Include="..\..\logging.cpp">
+			<Filter>blockchain21</Filter>
+		</ClCompile>
+		<ClCompile Include="..\..\main.cpp">
+			<Filter>blockchain21</Filter>
+		</ClCompile>
+		<ClCompile Include="..\..\MemoryMap.cpp">
+			<Filter>blockchain21</Filter>
+		</ClCompile>
+		<ClCompile Include="..\..\PublicKeyDatabase.cpp">
+			<Filter>blockchain21</Filter>
+		</ClCompile>
+		<ClCompile Include="..\..\RIPEMD160.cpp">
+			<Filter>blockchain21</Filter>
+		</ClCompile>
+		<ClCompile Include="..\..\SHA256.cpp">
+			<Filter>blockchain21</Filter>
+		</ClCompile>
+	</ItemGroup>
 </Project>

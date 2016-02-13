@@ -17,6 +17,12 @@
 		<ClInclude Include="..\..\CRC32.h">
 			<Filter>blockchain21</Filter>
 		</ClInclude>
+		<ClInclude Include="..\..\FileInterface.h">
+			<Filter>blockchain21</Filter>
+		</ClInclude>
+		<ClInclude Include="..\..\HeapSort.h">
+			<Filter>blockchain21</Filter>
+		</ClInclude>
 		<ClInclude Include="..\..\logging.h">
 			<Filter>blockchain21</Filter>
 		</ClInclude>
@@ -42,6 +48,9 @@
 			<Filter>blockchain21</Filter>
 		</ClCompile>
 		<ClCompile Include="..\..\CRC32.cpp">
+			<Filter>blockchain21</Filter>
+		</ClCompile>
+		<ClCompile Include="..\..\FileInterface.cpp">
 			<Filter>blockchain21</Filter>
 		</ClCompile>
 		<ClCompile Include="..\..\logging.cpp">

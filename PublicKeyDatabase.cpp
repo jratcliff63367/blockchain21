@@ -17,6 +17,9 @@
 #define ONE_MBTC (ONE_BTC/1000)
 #define SECONDS_PER_DAY (60*60*24)
 
+// how old, in seconds, before an input is considered a 'zombie'
+#define ZOMBIE_TIME (365*3)
+
 #ifdef _MSC_VER
 #pragma warning(disable:4100 4996 4189)
 #endif
@@ -26,6 +29,91 @@ namespace PUBLIC_KEY_DATABASE
 
 #define MAXIMUM_DAYS (365*10)	// Leave room for 10 years of days
 
+	enum AgeRank
+	{
+		AR_ONE_DAY,
+		AR_ONE_WEEK,			// 2- 7 days
+		AR_ONE_MONTH,			// 2 to 4 weeks
+		AR_THREE_MONTHS,		// one month to three months
+		AR_SIX_MONTHS,			// six months to one year
+		AR_ONE_YEAR,			// one-to-two years
+		AR_TWO_YEARS,			// two to three years
+		AR_THREE_YEARS,
+		AR_ZOMBIE,				// over 3 years
+		AR_LAST
+	};
+
+
+	class AgeStat
+	{
+	public:
+		void init(AgeRank r)
+		{
+			switch (r)
+			{
+				case AR_ONE_DAY:
+					mDays = 1;
+					mLabel = "One Day";
+					mCount = 0;
+					mValue = 0;
+					break;
+				case AR_ONE_WEEK:
+					mDays = 7;
+					mLabel = "Past Week";
+					mCount = 0;
+					mValue = 0;
+					break;
+				case AR_ONE_MONTH:
+					mDays = 30;
+					mLabel = "Past Month";
+					mCount = 0;
+					mValue = 0;
+					break;
+				case AR_THREE_MONTHS:
+					mDays = 365 / 4;
+					mLabel = "One to Three Months";
+					mCount = 0;
+					mValue = 0;
+					break;
+				case AR_SIX_MONTHS:
+					mDays = 365 / 2;
+					mLabel = "Four to Six Months";
+					mCount = 0;
+					mValue = 0;
+					break;
+				case AR_ONE_YEAR:
+					mDays = 365;
+					mLabel = "Six Months to One Year";
+					mCount = 0;
+					mValue = 0;
+					break;
+				case AR_TWO_YEARS:
+					mDays = 365 * 2;
+					mLabel = "One to Two Years";
+					mCount = 0;
+					mValue = 0;
+					break;
+				case AR_THREE_YEARS:
+					mDays = 365 * 3;
+					mLabel = "Two to Three Years";
+					mCount = 0;
+					mValue = 0;
+					break;
+				case AR_ZOMBIE:
+					mDays = 365 * 1000;
+					mLabel = "Over Three Years";
+					mCount = 0;
+					mValue = 0;
+					break;
+			}
+		}
+
+		AgeRank		mRank;
+		uint32_t	mDays;
+		const char *mLabel;
+		uint32_t	mCount;
+		double		mValue;
+	};
 	class DailyStatistics
 	{
 	public:
@@ -33,6 +121,10 @@ namespace PUBLIC_KEY_DATABASE
 		DailyStatistics(void)
 		{
 			memset(this, sizeof(DailyStatistics), 0);
+			for (uint32_t i = 0; i < AR_LAST; i++)
+			{
+				mAgeStats[i].init((AgeRank)i);
+			}
 		}
 
 		uint32_t getMeanInputCount(void) const
@@ -59,16 +151,32 @@ namespace PUBLIC_KEY_DATABASE
 		uint32_t	mTransactionSize;						// Size of all transactions on this day
 		uint32_t	mMaxTransactionSize;					// Maximum transaction size on this day
 		uint32_t	mKeyTypeCounts[BlockChain::KT_LAST];	// Counts of various types of keys
+
 		double		mTotalInputValue;						// Total value of all inputs for this day
-		double		mTotalOutputValue;						// Total value of all outputs for this day
+		uint64_t	mMaxInputValue;							// Maximum input value for this day
 		uint32_t	mTotalInputScriptLength;				// Total size of all input scripts for this day
-		uint32_t	mTotalOutputScriptLength;				// Total size of all output scripts for this day
 		uint32_t	mMaxInputScriptLength;					// Maximum input script length on this day
+
+		double		mTotalOutputValue;						// Total value of all outputs for this day
+		uint64_t	mMaxOutputValue;						// Maximum output value for this day
+		uint32_t	mTotalOutputScriptLength;				// Total size of all output scripts for this day
 		uint32_t	mMaxOutputScriptLength;					// Maximum output script length on this day
-		uint32_t	mCurrentBlock;							// The current blockf or this day
+
+		uint32_t	mCurrentBlock;							// The current block for this day
 		uint32_t	mTransactionBlockCount;					// How many transactions are in the current block
 		uint32_t	mBlockCount;							// Number of blocks on this day
-		uint32_t	mMaxTransactionBlockCount;			// Maximum number of transactions in a block
+		uint32_t	mMaxTransactionBlockCount;				// Maximum number of transactions in a block
+
+		uint32_t	mMaxInputAge;							// old input for this day.
+
+		uint32_t	mZombieInputCount;						// Number of times an input more than 3 years old was encountered
+		double		mZombieInputValue;						// Total value in BTC that was more than 3 years old
+		double		mZombieScore;
+
+		uint32_t	mUTXOCount;					// total number of unspent transaction outputs
+		double		mUTXOValue;					// total value of all unspent transaction outputs
+
+		AgeStat		mAgeStats[AR_LAST];			// UTXO by age stats
 	};
 
 
@@ -81,6 +189,18 @@ namespace PUBLIC_KEY_DATABASE
 		return days;
 	}
 
+	uint32_t getAgeInDays(uint32_t timestamp,uint32_t referenceDate)
+	{
+		uint32_t diff = 0;
+		if (referenceDate > timestamp)
+		{
+			diff = referenceDate - timestamp;
+		}
+		uint32_t days = diff / SECONDS_PER_DAY;
+		return days;
+	}
+
+
 	uint32_t getAgeInDaysCurrent(uint32_t timestamp)
 	{
 		time_t t;
@@ -89,6 +209,7 @@ namespace PUBLIC_KEY_DATABASE
 		uint32_t days = diff / SECONDS_PER_DAY;
 		return days;
 	}
+
 
 
 	typedef std::vector< uint64_t > TransactionVector;
@@ -392,11 +513,11 @@ namespace PUBLIC_KEY_DATABASE
 	class TransactionHash : public Hash256
 	{
 	public:
-		TransactionHash(void)
+		TransactionHash(void) : mFileOffset(0), mTimeStamp(0)
 		{
 		}
 
-		TransactionHash(const Hash256 &h) : Hash256(h)
+		TransactionHash(const Hash256 &h) : Hash256(h), mFileOffset(0), mTimeStamp(0)
 		{
 		}
 
@@ -408,7 +529,27 @@ namespace PUBLIC_KEY_DATABASE
 			return a == b;
 		}
 
+		void setFileOffset(uint64_t fileOffset)
+		{
+			mFileOffset = fileOffset;
+		}
+
+		uint64_t getFileOffset(void) const
+		{
+			return mFileOffset;
+		}
+
+		void setTimeStamp(uint32_t t)
+		{
+			mTimeStamp = t;
+		}
+		uint32_t getTimeStamp(void) const
+		{
+			return mTimeStamp;
+		}
+	private:
 		uint64_t			mFileOffset;	// The location in the file for this transaction
+		uint32_t			mTimeStamp;
 	};
 
 	class TransactionOutput
@@ -462,12 +603,13 @@ namespace PUBLIC_KEY_DATABASE
 		{
 
 		}
-		TransactionInput(const BlockChain::BlockInput &bi, uint64_t fileOffset)
+		TransactionInput(const BlockChain::BlockInput &bi, uint64_t fileOffset,uint32_t timeStamp,uint64_t inputValue)
 		{
 			mTransactionFileOffset	= fileOffset;
 			mTransactionIndex		= bi.transactionIndex;
-			mInputValue				= bi.inputValue;
+			mInputValue				= inputValue;
 			mResponseScriptLength = bi.responseScriptLength;
+			mTimeStamp = timeStamp;
 		}
 
 		TransactionInput(FILE_INTERFACE *fph)
@@ -476,6 +618,7 @@ namespace PUBLIC_KEY_DATABASE
 			fi_fread(&mTransactionIndex, sizeof(mTransactionIndex), 1, fph);
 			fi_fread(&mInputValue, sizeof(mInputValue), 1, fph);
 			fi_fread(&mResponseScriptLength, sizeof(mResponseScriptLength), 1, fph);
+			fi_fread(&mTimeStamp, sizeof(mTimeStamp), 1, fph);
 		}
 
 		void save(FILE_INTERFACE *fph)
@@ -484,6 +627,7 @@ namespace PUBLIC_KEY_DATABASE
 			fi_fwrite(&mTransactionIndex, sizeof(mTransactionIndex), 1, fph);
 			fi_fwrite(&mInputValue, sizeof(mInputValue), 1, fph);
 			fi_fwrite(&mResponseScriptLength, sizeof(mResponseScriptLength), 1, fph);
+			fi_fwrite(&mTimeStamp, sizeof(mTimeStamp), 1, fph);
 		}
 
 		void echo(void)
@@ -495,6 +639,7 @@ namespace PUBLIC_KEY_DATABASE
 		uint32_t	mTransactionIndex;				// Which output forms this input
 		uint32_t	mResponseScriptLength;			// The length of the response script
 		uint64_t	mInputValue;					// The input value
+		uint32_t	mTimeStamp;
 	};
 
 	typedef std::vector< TransactionInput > TransactionInputVector;
@@ -581,9 +726,9 @@ namespace PUBLIC_KEY_DATABASE
 			}
 		}
 
-		void addInput(const BlockChain::BlockInput &bi, uint64_t fileOffset)
+		void addInput(const BlockChain::BlockInput &bi, uint64_t fileOffset,uint32_t timeStamp,uint64_t inputValue)
 		{
-			TransactionInput ti(bi, fileOffset);
+			TransactionInput ti(bi, fileOffset,timeStamp,inputValue);
 			mInputs.push_back(ti);
 		}
 
@@ -595,25 +740,25 @@ namespace PUBLIC_KEY_DATABASE
 
 		void echo(void)
 		{
-			logMessage("===============================================================================================================================\r\n");
+			logMessage("===============================================================================================================================\n");
 			logMessage("TransactionHash: ");
 			printReverseHash(mTransactionHash);
-			logMessage("\r\n");
-			logMessage("BlockNumber: %d\r\n", mBlockNumber);
-			logMessage("TransactionVersionNumber: %d\r\n", mTransactionVersionNumber);
-			logMessage("TransactionTime: %s\r\n", getDateString(time_t(mTransactionTime)));
-			logMessage("InputCount: %d\r\n", mInputs.size());
+			logMessage("\n");
+			logMessage("BlockNumber: %d\n", mBlockNumber);
+			logMessage("TransactionVersionNumber: %d\n", mTransactionVersionNumber);
+			logMessage("TransactionTime: %s\n", getDateString(time_t(mTransactionTime)));
+			logMessage("InputCount: %d\n", mInputs.size());
 			for (size_t i = 0; i < mInputs.size(); i++)
 			{
 				mInputs[i].echo();
 			}
-			logMessage("OutputCount: %d\r\n", mOutputs.size());
+			logMessage("OutputCount: %d\n", mOutputs.size());
 			for (size_t i = 0; i < mOutputs.size(); i++)
 			{
 				mOutputs[i].echo();
 			}
-			logMessage("===============================================================================================================================\r\n");
-			logMessage("\r\n");
+			logMessage("===============================================================================================================================\n");
+			logMessage("\n");
 		}
 
 		uint8_t						mTransactionHash[32];				// The transaction hash
@@ -650,6 +795,62 @@ namespace std
 	};
 }
 
+class UTXO
+{
+public:
+	UTXO(void)
+	{
+
+	}
+	UTXO(uint64_t fileOffset, uint64_t inputIndex) : mFileOffset(fileOffset), mInputIndex(inputIndex)
+	{
+
+	}
+
+	bool operator==(const UTXO &other) const
+	{
+		return other.mFileOffset == mFileOffset && other.mInputIndex == mInputIndex;
+	}
+
+	uint64_t getHash(void) const
+	{
+		return mFileOffset ^ mInputIndex;
+	}
+
+	uint64_t	mFileOffset;
+	uint64_t	mInputIndex;
+};
+
+class UTXOSTAT
+{
+public:
+	UTXOSTAT(void)
+	{
+		mValue = 0;
+		mTimeStamp = 0;
+	}
+	UTXOSTAT(uint64_t value, uint32_t timeStamp)
+	{
+		mValue = value;
+		mTimeStamp = timeStamp;
+	}
+	uint64_t	mValue;				// The value in this unspent transaction output
+	uint32_t	mTimeStamp;			// The date of this unspent transaction output
+};
+
+namespace std
+{
+	template <>
+	struct hash<UTXO>
+	{
+		std::size_t operator()(const UTXO &k) const
+		{
+			return std::size_t(k.getHash());
+		}
+	};
+}
+
+
 namespace PUBLIC_KEY_DATABASE
 {
 
@@ -659,6 +860,8 @@ namespace PUBLIC_KEY_DATABASE
 
 	typedef std::unordered_set< PublicKey >			PublicKeySet;			// The unordered set of all public keys
 	typedef std::unordered_set< TransactionHash >	TransactionHashSet;		// The unordered set of all transactions; only contains the file seek offset
+	typedef std::unordered_map< UTXO, uint64_t > UTXOMap;
+	typedef std::unordered_map< UTXO, UTXOSTAT > UTXOStatMap;
 
 	const char *magicID = "0123456789ABCDE";
 
@@ -717,15 +920,15 @@ namespace PUBLIC_KEY_DATABASE
 				if (fph)
 				{
 					fi_fclose(fph);
-					logMessage("A pre-processed transactions database already exists!\r\n");
-					logMessage("Are you sure you want to delete it and start over?\r\n");
-					logMessage("Press 'y' to continue, any other key to cancel.\r\n");
+					logMessage("A pre-processed transactions database already exists!\n");
+					logMessage("Are you sure you want to delete it and start over?\n");
+					logMessage("Press 'y' to continue, any other key to cancel.\n");
 					key = getKey();
 				}
 				if (key == 'y')
 				{
 					fi_deleteFile(PUBLIC_KEY_RECORDS_FILE_NAME);
-					mTransactionFile = fi_fopen(TRANSACTION_FILE_NAME, "wb", nullptr, 0, false);
+					mTransactionFile = fi_fopen(TRANSACTION_FILE_NAME, "wb+", nullptr, 0, false);
 					if (mTransactionFile)
 					{
 						size_t slen = strlen(magicID);
@@ -733,7 +936,7 @@ namespace PUBLIC_KEY_DATABASE
 						mTransactionFileCountSeekLocation = uint32_t(fi_ftell(mTransactionFile));
 						fi_fwrite(&mTransactionCount, sizeof(mTransactionCount), 1, mTransactionFile); // save the number of transactions
 						fi_fflush(mTransactionFile);
-						mPublicKeyFile = fi_fopen(PUBLIC_KEY_FILE_NAME, "wb", nullptr, 0, false);
+						mPublicKeyFile = fi_fopen(PUBLIC_KEY_FILE_NAME, "wb+", nullptr, 0, false);
 						if (mPublicKeyFile)
 						{
 							size_t slen = strlen(magicID);
@@ -744,12 +947,12 @@ namespace PUBLIC_KEY_DATABASE
 						}
 						else
 						{
-							logMessage("Failed to open file '%s' for write access.\r\n", PUBLIC_KEY_FILE_NAME);
+							logMessage("Failed to open file '%s' for write access.\n", PUBLIC_KEY_FILE_NAME);
 						}
 					}
 					else
 					{
-						logMessage("Failed to open file '%s' for write access.\r\n", TRANSACTION_FILE_NAME);
+						logMessage("Failed to open file '%s' for write access.\n", TRANSACTION_FILE_NAME);
 					}
 				}
 			}
@@ -757,7 +960,7 @@ namespace PUBLIC_KEY_DATABASE
 
 		virtual ~PublicKeyDatabaseImpl(void)
 		{
-			logMessage("~PublicKeyDatabaseImpl destructor\r\n");
+			logMessage("~PublicKeyDatabaseImpl destructor\n");
 			delete[]mDailyStatistics;
 			if (mTransactionFile)
 			{
@@ -794,8 +997,11 @@ namespace PUBLIC_KEY_DATABASE
 					TransactionHash th(h);
 					TransactionHashSet::iterator found = mTransactions.find(th);
 					uint64_t fileOffset = 0;
+					uint32_t timeStamp = 0;
+					uint64_t inputValue = 0;
 					if (found == mTransactions.end())
 					{
+						timeStamp = b->timeStamp; // if it's a coinbase transaction, we just use the block time as the timestamp
 						if (bi.transactionIndex != 0xFFFFFFFF) // If it is not a coinbase transaction, then assert
 						{
 							assert(0); // we should always be able to find the previous transaction!
@@ -803,9 +1009,20 @@ namespace PUBLIC_KEY_DATABASE
 					}
 					else
 					{
-						fileOffset = (*found).mFileOffset;
+						fileOffset = (*found).getFileOffset();
+						timeStamp = (*found).getTimeStamp();
+						UTXO utxo(fileOffset, bi.transactionIndex);
+						UTXOMap::iterator found = mUTXO.find(utxo);
+						if (found != mUTXO.end())
+						{
+							inputValue = (*found).second;
+						}
+						else
+						{
+							logMessage("Failed to locate unspent transaction output.\r\n");
+						}
 					}
-					t.addInput(bi, fileOffset);
+					t.addInput(bi, fileOffset,timeStamp, inputValue);
 				}
 
 				for (uint32_t i = 0; i < bt.outputCount; i++)
@@ -813,20 +1030,23 @@ namespace PUBLIC_KEY_DATABASE
 					const BlockChain::BlockOutput &bo = bt.outputs[i];
 					uint32_t addressIndex = getPublicKeyIndex(bo.asciiAddress);
 					t.addOutput(bo,addressIndex);
+					UTXO utxo(fileOffset, i);
+					mUTXO[utxo] = bo.value;
 				}
 
 				t.save(mTransactionFile);
 				Hash256 h(bt.transactionHash);
 				TransactionHash th(h);
-				th.mFileOffset = fileOffset;
+				th.setFileOffset(fileOffset);
+				th.setTimeStamp(b->timeStamp);
 
 				TransactionHashSet::iterator found = mTransactions.find(th);
 				if (found != mTransactions.end() )
 				{
-					logMessage("Encountered the same transaction hash twice; this appears to be a bug and must be fixed! Ignoring second occurence for now.\r\n");
+					logMessage("Encountered the same transaction hash twice; this appears to be a bug and must be fixed! Ignoring second occurence for now.\n");
 					logMessage("DuplicateHash:");
 					printReverseHash((const uint8_t *)&th.mWord0);
-					logMessage("\r\n");
+					logMessage("\n");
 				}
 				else
 				{
@@ -849,24 +1069,26 @@ namespace PUBLIC_KEY_DATABASE
 			{
 				closePublicKeyFile();
 				mTransactionFile = nullptr;
-				logMessage("Clearing transactions container\r\n");
+				logMessage("Clearing transactions container\n");
 				mTransactions.clear();		// We no longer need this hash-set of transaction hashes since we have rebased the data based the data based on transaction offset into the datafile
+				logMessage("Clearing UTXO container\n");
+				mUTXO.clear();
 
-				logMessage("Clearing PublicKeys container\r\n");
+				logMessage("Clearing PublicKeys container\n");
 				mPublicKeys.clear();		// We no longer needs this hash set, so free up the memory
 				mAnalyze = true;
-				logMessage("Opening the transactions file\r\n");
+				logMessage("Opening the transactions file\n");
 				openTransactionsFile();
-				logMessage("Loading the PublicKey address file\r\n");
+				logMessage("Loading the PublicKey address file\n");
 				loadPublicKeyFile();
 			}
-			logMessage("Creating PublicKey records data  set.\r\n");
+			logMessage("Creating PublicKey records data  set.\n");
 			PublicKeyRecord *records = new PublicKeyRecord[mPublicKeyCount];
 			for (uint32_t i = 0; i < mPublicKeyCount; i++)
 			{
 				records[i].mIndex = i; // assign the array index
 			}
-			logMessage("Building PublicKey records.\r\n");
+			logMessage("Building PublicKey records.\n");
 			uint32_t transactionCount = 0;
 			uint64_t transactionOffset = uint64_t(fi_ftell(mTransactionFile));
 			Transaction t;
@@ -875,18 +1097,18 @@ namespace PUBLIC_KEY_DATABASE
 				transactionCount++;
 				if ((transactionCount % 10000) == 0)
 				{
-					logMessage("Processing transaction %s\r\n", formatNumber(transactionCount));
+					logMessage("Processing transaction %s\n", formatNumber(transactionCount));
 				}
 				uint64_t toffset = transactionOffset; // the base transaction offset
 				transactionOffset = uint64_t(fi_ftell(mTransactionFile));
 				processTransaction(t,toffset,records);
 				// do stuff here...
 			}
-			logMessage("Public Key Records built.\r\n");
+			logMessage("Public Key Records built.\n");
 			savePublicKeyRecords(records); // save the records to disk!
-			logMessage("Finished saving public records, now deleting them.\r\n");
+			logMessage("Finished saving public records, now deleting them.\n");
 			delete[]records;
-			logMessage("Public record deletion now complete.\r\n");
+			logMessage("Public record deletion now complete.\n");
 		}
 
 		// Process all of the inputs and outputs in this transaction and correlate them with the records
@@ -918,12 +1140,12 @@ namespace PUBLIC_KEY_DATABASE
 						}
 						else
 						{
-							logMessage("WARNING! Encountered index to public key #%s but the maximum number of public keys we have is %s\r\n", formatNumber(to.mIndex), formatNumber(mPublicKeyCount));
+							logMessage("WARNING! Encountered index to public key #%s but the maximum number of public keys we have is %s\n", formatNumber(to.mIndex), formatNumber(mPublicKeyCount));
 						}
 					}
 					else
 					{
-						logMessage("Invalid transaction index of %d; maximum outputs in this transaction are %d\r\n", ti.mTransactionIndex, inputTransaction.mOutputs.size());
+						logMessage("Invalid transaction index of %d; maximum outputs in this transaction are %d\n", ti.mTransactionIndex, inputTransaction.mOutputs.size());
 					}
 				}
 				else
@@ -971,7 +1193,7 @@ namespace PUBLIC_KEY_DATABASE
 				}
 				else
 				{
-					logMessage("WARNING! Encountered index to public key #%s but the maximum number of public keys we have is %s\r\n", formatNumber(to.mIndex), formatNumber(mPublicKeyCount));
+					logMessage("WARNING! Encountered index to public key #%s but the maximum number of public keys we have is %s\n", formatNumber(to.mIndex), formatNumber(mPublicKeyCount));
 				}
 			}
 		}
@@ -1019,7 +1241,7 @@ namespace PUBLIC_KEY_DATABASE
 			mTransactionFile = fi_fopen(TRANSACTION_FILE_NAME, "rb",nullptr,0,true);
 			if (mTransactionFile == nullptr)
 			{
-				logMessage("Failed to open transaction file '%s' for read access.\r\n", TRANSACTION_FILE_NAME);
+				logMessage("Failed to open transaction file '%s' for read access.\n", TRANSACTION_FILE_NAME);
 				return false;
 			}
 			size_t slen = strlen(magicID);
@@ -1031,19 +1253,19 @@ namespace PUBLIC_KEY_DATABASE
 				if (strcmp(temp, magicID) == 0)
 				{
 					ret = true;
-					logMessage("Successfully opened the transaction file '%s' for read access.\r\n", TRANSACTION_FILE_NAME);
+					logMessage("Successfully opened the transaction file '%s' for read access.\n", TRANSACTION_FILE_NAME);
 					fi_fread(&mTransactionCount, sizeof(mTransactionCount), 1, mTransactionFile);
 					assert(mTransactionCount); // if this is zero then the transaction file didn't close cleanly, we could dervive this value if necessary.
 					mFirstTransactionOffset = fi_ftell(mTransactionFile);
 				}
 				else
 				{
-					logMessage("Not a valid transaction invalid header block.\r\n");
+					logMessage("Not a valid transaction invalid header block.\n");
 				}
 			}
 			else
 			{
-				logMessage("Not a valid transaction file failed to read header.\r\n");
+				logMessage("Not a valid transaction file failed to read header.\n");
 			}
 			delete[]temp;
 			return ret;
@@ -1076,8 +1298,8 @@ namespace PUBLIC_KEY_DATABASE
 		// Save all of the public key records we built
 		void savePublicKeyRecords(PublicKeyRecord *records)
 		{
-			logMessage("Saving %s public key records; this is the fully collated set of transactions corresponding to each unique public key address.\r\n", formatNumber(mPublicKeyCount));
-			FILE_INTERFACE *fph = fi_fopen(PUBLIC_KEY_RECORDS_FILE_NAME, "wb", nullptr, 0, false);
+			logMessage("Saving %s public key records; this is the fully collated set of transactions corresponding to each unique public key address.\n", formatNumber(mPublicKeyCount));
+			FILE_INTERFACE *fph = fi_fopen(PUBLIC_KEY_RECORDS_FILE_NAME, "wb+", nullptr, 0, false);
 			if (fph)
 			{
 				size_t slen = strlen(magicID);
@@ -1104,7 +1326,7 @@ namespace PUBLIC_KEY_DATABASE
 				delete[]seekLocations;
 
 				fi_fclose(fph);
-				logMessage("All records now saved to file '%s'\r\n", PUBLIC_KEY_RECORDS_FILE_NAME);
+				logMessage("All records now saved to file '%s'\n", PUBLIC_KEY_RECORDS_FILE_NAME);
 			}
 		}
 
@@ -1117,7 +1339,7 @@ namespace PUBLIC_KEY_DATABASE
 			// Write out the total number of transactions and then close the transactions file
 			if (mTransactionFile)
 			{
-				logMessage("Closing the transaction file which contains %s transactions.\r\n", formatNumber(mTransactionCount));
+				logMessage("Closing the transaction file which contains %s transactions.\n", formatNumber(mTransactionCount));
 				fi_fseek(mTransactionFile, mTransactionFileCountSeekLocation, SEEK_SET);
 				fi_fwrite(&mTransactionCount, sizeof(mTransactionCount), 1, mTransactionFile);
 				fi_fclose(mTransactionFile);
@@ -1127,10 +1349,10 @@ namespace PUBLIC_KEY_DATABASE
 			{
 				assert(0);
 			}
-			logMessage("Processed %s transactions with %s unique public keys.\r\n", formatNumber(int32_t(mTransactionCount)), formatNumber(int32_t(mPublicKeyCount)));
+			logMessage("Processed %s transactions with %s unique public keys.\n", formatNumber(int32_t(mTransactionCount)), formatNumber(int32_t(mPublicKeyCount)));
 			if (mPublicKeyFile)
 			{
-				logMessage("Closing the PublicKeys file\r\n");
+				logMessage("Closing the PublicKeys file\n");
 				fi_fseek(mPublicKeyFile, mPublicKeyFileCountSeekLocation, SEEK_SET);
 				fi_fwrite(&mPublicKeyCount, sizeof(mPublicKeyCount), 1, mPublicKeyFile);
 				fi_fclose(mPublicKeyFile);
@@ -1158,7 +1380,7 @@ namespace PUBLIC_KEY_DATABASE
 			mAddressFile = fi_fopen(PUBLIC_KEY_FILE_NAME, "rb", nullptr, 0, true);
 			if (mAddressFile == nullptr)
 			{
-				logMessage("Failed to open public key file '%s' for read access.\r\n", PUBLIC_KEY_FILE_NAME);
+				logMessage("Failed to open public key file '%s' for read access.\n", PUBLIC_KEY_FILE_NAME);
 				return false;
 			}
 			size_t slen = strlen(magicID);
@@ -1168,26 +1390,26 @@ namespace PUBLIC_KEY_DATABASE
 			{
 				if (strcmp(temp, magicID) == 0)
 				{
-					logMessage("Successfully opened the public key file '%s' for read access.\r\n", PUBLIC_KEY_FILE_NAME);
+					logMessage("Successfully opened the public key file '%s' for read access.\n", PUBLIC_KEY_FILE_NAME);
 					r = fi_fread(&mPublicKeyCount, sizeof(mPublicKeyCount), 1, mAddressFile);
 					if (r == 1)
 					{
-						logMessage("Reading in %s public keys.\r\n", formatNumber(mPublicKeyCount));
+						logMessage("Reading in %s public keys.\n", formatNumber(mPublicKeyCount));
 						mAddresses = (PublicKeyData *)fi_getCurrentMemoryLocation(mAddressFile);
 					}
 					else
 					{
-						logMessage("Failed to read from public key file.\r\n");
+						logMessage("Failed to read from public key file.\n");
 					}
 				}
 				else
 				{
-					logMessage("Not a valid header block.\r\n");
+					logMessage("Not a valid header block.\n");
 				}
 			}
 			else
 			{
-				logMessage("Not a valid file failed to read header.\r\n");
+				logMessage("Not a valid file failed to read header.\n");
 			}
 			delete[]temp;
 
@@ -1218,7 +1440,7 @@ namespace PUBLIC_KEY_DATABASE
 			mPublicKeyRecordFile = fi_fopen(PUBLIC_KEY_RECORDS_FILE_NAME, "rb", nullptr, 0, true);
 			if (mPublicKeyRecordFile == nullptr)
 			{
-				logMessage("Failed to open public key file '%s' for read access.\r\n", PUBLIC_KEY_RECORDS_FILE_NAME);
+				logMessage("Failed to open public key file '%s' for read access.\n", PUBLIC_KEY_RECORDS_FILE_NAME);
 				return false;
 			}
 			size_t slen = strlen(magicID);
@@ -1228,7 +1450,7 @@ namespace PUBLIC_KEY_DATABASE
 			{
 				if (strcmp(temp, magicID) == 0)
 				{
-					logMessage("Successfully opened the public key records file '%s' for read access.\r\n", PUBLIC_KEY_RECORDS_FILE_NAME);
+					logMessage("Successfully opened the public key records file '%s' for read access.\n", PUBLIC_KEY_RECORDS_FILE_NAME);
 					uint32_t publicKeyCount = 0;
 					r = fi_fread(&publicKeyCount, sizeof(publicKeyCount), 1, mPublicKeyRecordFile);
 					if (r == 1)
@@ -1236,7 +1458,7 @@ namespace PUBLIC_KEY_DATABASE
 						assert(publicKeyCount); // if the public key count is zero; this probably indicates that the file did not close cleanly on creation. We could derive the count if necessary...
 						assert(publicKeyCount == mPublicKeyCount);
 						mPublicKeyCount = publicKeyCount;
-						logMessage("Initializing pointer tables for %s public keys records\r\n", formatNumber(mPublicKeyCount));
+						logMessage("Initializing pointer tables for %s public keys records\n", formatNumber(mPublicKeyCount));
 						mPublicKeyRecordOffsets = (const uint64_t *)fi_getCurrentMemoryLocation(mPublicKeyRecordFile);
 						mPublicKeyRecordSorted = (PublicKeyRecordFile **)(mPublicKeyRecordOffsets + mPublicKeyCount);
 						size_t size;
@@ -1253,17 +1475,17 @@ namespace PUBLIC_KEY_DATABASE
 					}
 					else
 					{
-						logMessage("Failed to read from public key records file.\r\n");
+						logMessage("Failed to read from public key records file.\n");
 					}
 				}
 				else
 				{
-					logMessage("Not a valid header block.\r\n");
+					logMessage("Not a valid header block.\n");
 				}
 			}
 			else
 			{
-				logMessage("Not a valid file failed to read header.\r\n");
+				logMessage("Not a valid file failed to read header.\n");
 			}
 			delete[]temp;
 
@@ -1300,28 +1522,28 @@ namespace PUBLIC_KEY_DATABASE
 			assert(index < mPublicKeyCount);
 			const PublicKeyRecordFile &r = getPublicKeyRecordFile(index);
 			PublicKeyData &a = mAddresses[index];
-			logMessage("==========================================================\r\n");
+			logMessage("==========================================================\n");
 
 			logBitcoinAddress(a.address);
-			logMessage("\r\n");
-			logMessage("%s total transaction on this address.\r\n", formatNumber(int32_t(r.mCount)));
+			logMessage("\n");
+			logMessage("%s total transaction on this address.\n", formatNumber(int32_t(r.mCount)));
 
 			uint64_t totalSend = r.getTotalSend();
 			if (totalSend)
 			{
-				logMessage("Total Value Sent: %0.2f\r\n", float(totalSend) / ONE_BTC);
+				logMessage("Total Value Sent: %0.2f\n", float(totalSend) / ONE_BTC);
 			}
-			logMessage("Total Value Received: %0.2f\r\n", float(r.getTotalReceive()) / ONE_BTC);
-			logMessage("Balance: %0.2f\r\n", float(r.getBalance()) / ONE_BTC);
+			logMessage("Total Value Received: %0.2f\n", float(r.getTotalReceive()) / ONE_BTC);
+			logMessage("Balance: %0.2f\n", float(r.getBalance()) / ONE_BTC);
 			uint32_t lastSendTime = r.getLastSendTime();
 			if (lastSendTime)
 			{
-				logMessage("LastSend: %s\r\n", getTimeString(lastSendTime));
+				logMessage("LastSend: %s\n", getTimeString(lastSendTime));
 			}
 			uint32_t lastReceiveTime = r.getLastReceiveTime();
 			if (lastReceiveTime)
 			{
-				logMessage("LastReceive: %s\r\n", getTimeString(lastReceiveTime));
+				logMessage("LastReceive: %s\n", getTimeString(lastReceiveTime));
 			}
 
 			uint32_t count = uint32_t(r.mCount);
@@ -1344,17 +1566,17 @@ namespace PUBLIC_KEY_DATABASE
 						prefix = t.mChange ? "Change" : "Receive";
 					}
 				}
-				logMessage("%10s : %10s : %0.2f \r\n", prefix, getTimeString(t.mTimeStamp), float(t.mValue) / ONE_BTC );
+				logMessage("%10s : %10s : %0.2f \n", prefix, getTimeString(t.mTimeStamp), float(t.mValue) / ONE_BTC );
 			}
 
 
-			logMessage("==========================================================\r\n");
-			logMessage("\r\n");
+			logMessage("==========================================================\n");
+			logMessage("\n");
 		}
 
 		void initByTime(uint32_t timeStamp)
 		{
-			logMessage("Computing balances up to this date: %s\r\n", getTimeString(timeStamp));
+			logMessage("Computing balances up to this date: %s\n", getTimeString(timeStamp));
 			for (uint32_t i = 0; i < mPublicKeyCount; i++)
 			{
 				PublicKeyRecordFile &pkrf = getPublicKeyRecordFile(i);
@@ -1367,14 +1589,14 @@ namespace PUBLIC_KEY_DATABASE
 		virtual void reportTopBalances(const char *reportFileName,uint32_t maxReport,uint32_t timeStamp)
 		{
 			initByTime(timeStamp);
-			logMessage("Finished computing balances for %s public keys.\r\n", formatNumber(mPublicKeyCount));
-			logMessage("Sorting by balance.\r\n");
+			logMessage("Finished computing balances for %s public keys.\n", formatNumber(mPublicKeyCount));
+			logMessage("Sorting by balance.\n");
 			SortByBalance sbb;
 			sbb.heapSort((void **)(mPublicKeyRecordSorted), mPublicKeyCount);
-			FILE *fph = fopen(reportFileName, "wb");
+			FILE *fph = fopen(reportFileName, "wb+");
 			if (fph)
 			{
-				fprintf(fph, "PublicKey,Balance,Age\r\n");
+				fprintf(fph, "PublicKey,Balance,Age\n");
 				if (maxReport > mPublicKeyCount)
 				{
 					maxReport = mPublicKeyCount;
@@ -1387,13 +1609,13 @@ namespace PUBLIC_KEY_DATABASE
 				{
 					PublicKeyRecordFile &pkrf = *mPublicKeyRecordSorted[i];
 					PublicKeyData &a = mAddresses[pkrf.mIndex];
-					fprintf(fph, "%s,%0.2f,%d\r\n", getBitcoinAddressAscii(a.address), (float)pkrf.mBalance / ONE_BTC, pkrf.mDaysOld);
+					fprintf(fph, "%s,%0.2f,%d\n", getBitcoinAddressAscii(a.address), (float)pkrf.mBalance / ONE_BTC, pkrf.mDaysOld);
 				}
 				fclose(fph);
 			}
 			else
 			{
-				logMessage("Failed to open report file '%s' for write access\r\n");
+				logMessage("Failed to open report file '%s' for write access\n");
 			}
 		}
 
@@ -1420,10 +1642,9 @@ namespace PUBLIC_KEY_DATABASE
 		{
 			delete[]mDailyStatistics;
 			mDailyStatistics = new DailyStatistics[MAXIMUM_DAYS];
-			memset(mDailyStatistics,0,sizeof(DailyStatistics)*MAXIMUM_DAYS);
 			time_t curTime;
 			time(&curTime);		// get the current 'real' time; if we go past it, we stop..
-
+			mLastDay = 0;
 			seekFirstTransaction();
 			uint32_t transactionCount = 0;
 			uint64_t transactionOffset = uint64_t(fi_ftell(mTransactionFile));
@@ -1433,7 +1654,7 @@ namespace PUBLIC_KEY_DATABASE
 				transactionCount++;
 				if ((transactionCount % 10000) == 0)
 				{
-					logMessage("Processing transaction %s\r\n", formatNumber(transactionCount));
+					logMessage("Processing transaction %s\n", formatNumber(transactionCount));
 				}
 				uint64_t toffset = transactionOffset; // the base transaction offset
 				transactionOffset = uint64_t(fi_ftell(mTransactionFile));
@@ -1443,8 +1664,55 @@ namespace PUBLIC_KEY_DATABASE
 			FILE_INTERFACE *fph = fi_fopen(reportFileName, "wb", nullptr, 0, false);
 			if (fph)
 			{
-				logMessage("Generating daily transactions report to file '%s'\r\n", reportFileName);
-				fi_fprintf(fph,"Date,TransactiontCount\r\n");
+				logMessage("Generating daily transactions report to file '%s'\n", reportFileName);
+				fi_fprintf(fph,"Date");
+
+				fi_fprintf(fph, ",BlockCount");
+				fi_fprintf(fph, ",TotalTransactionCount");
+				fi_fprintf(fph, ",AverageTransactionCount");
+				fi_fprintf(fph, ",MaxTransactionCount");
+
+				fi_fprintf(fph, ",TotalTransactionSize");
+				fi_fprintf(fph, ",AverageTransactionSize");
+
+				fi_fprintf(fph, ",TotalInputCount");
+				fi_fprintf(fph, ",AverageInputCount");
+				fi_fprintf(fph, ",MaxInputCount");
+				fi_fprintf(fph, ",TotalInputValue");
+				fi_fprintf(fph, ",AverageInputValue");
+				fi_fprintf(fph, ",MaxInputValue");
+
+				fi_fprintf(fph, ",TotalOutputCount");
+				fi_fprintf(fph, ",AverageOutputCount");
+				fi_fprintf(fph, ",MaxOutputCount");
+				fi_fprintf(fph, ",TotalOutputValue");
+				fi_fprintf(fph, ",AverageOutputValue");
+				fi_fprintf(fph, ",MaxOutputValue");
+
+				fi_fprintf(fph, ",MaxInputDaysOld");
+
+				fi_fprintf(fph, ",ZombieInputCount");
+				fi_fprintf(fph, ",ZombieInputValue");
+				fi_fprintf(fph, ",ZombieScore");
+
+				fi_fprintf(fph, ",UTXOCount");
+				fi_fprintf(fph, ",UTXOValue");
+
+				{
+					DailyStatistics &d = mDailyStatistics[0];
+					for (uint32_t i = 0; i < AR_LAST; i++)
+					{
+						fi_fprintf(fph, ",\"%s Count\"", d.mAgeStats[i].mLabel);
+					}
+					for (uint32_t i = 0; i < AR_LAST; i++)
+					{
+						fi_fprintf(fph, ",\"%s Value\"", d.mAgeStats[i].mLabel);
+					}
+				}
+
+				fi_fprintf(fph, "\n");
+
+
 				for (uint32_t i = 0; i < MAXIMUM_DAYS; i++)
 				{
 					if (noMoreDays(i))
@@ -1452,16 +1720,63 @@ namespace PUBLIC_KEY_DATABASE
 						break;
 					}
 					DailyStatistics &d = mDailyStatistics[i];
+
 					if (d.mTimeStamp)
 					{
-						fi_fprintf(fph, "%s,%d\r\n", getDateString(d.mTimeStamp), d.mTransactionCount);
+						fi_fprintf(fph, "%s",	getDateString(d.mTimeStamp), d.mTransactionCount);	// Date
+						fi_fprintf(fph, ",%d",	d.mBlockCount);										// Blocks on this day
+						fi_fprintf(fph, ",%d",	d.mTransactionCount);								// Number of transactions on this day
+						fi_fprintf(fph, ",%f",	(double)d.mTransactionCount / (double)d.mBlockCount);				// Average number of transactions per block
+						fi_fprintf(fph, ",%d",  d.mMaxTransactionBlockCount);						// Most transactions in a block
+						fi_fprintf(fph, ",%d",	d.mTransactionSize);								// Total size of all transactions on this day
+						fi_fprintf(fph, ",%f",  (double)d.mTransactionSize / (double)d.mTransactionCount);			// Average size of a transaction on this day
+
+						fi_fprintf(fph, ",%d", d.mInputCount);										// Total number of inputs on this day.
+						fi_fprintf(fph, ",%f", (double)d.mInputCount / (double)d.mTransactionCount);	// Average number of inputs per transaction
+						fi_fprintf(fph, ",%d", d.mMaxInputCount);									// Maximum number of inputs on a transaction this day
+						fi_fprintf(fph, ",%f", d.mTotalInputValue);									// Total input value
+						fi_fprintf(fph, ",%f", d.mTotalInputValue / (double)d.mTransactionCount);	// Average input value per transaction
+						fi_fprintf(fph, ",%f", (double)d.mMaxInputValue / ONE_BTC);					// Maximum input value on this day
+
+						fi_fprintf(fph, ",%d", d.mOutputCount);										// Total number of outputs on this day.
+						fi_fprintf(fph, ",%f", (double)d.mOutputCount / (double)d.mTransactionCount);	// Average number of outputs per transaction
+						fi_fprintf(fph, ",%d", d.mMaxOutputCount);									// Maximum number of outputs on a transaction this day
+						fi_fprintf(fph, ",%f", d.mTotalOutputValue);									// Total output value
+						fi_fprintf(fph, ",%f", d.mTotalOutputValue / (double)d.mTransactionCount);	// Average output value per transaction
+						fi_fprintf(fph, ",%f", (double)d.mMaxOutputValue / ONE_BTC);					// Maximum output value on this day
+
+						fi_fprintf(fph, ",%d", d.mMaxInputAge); //  oldest input
+
+						fi_fprintf(fph, ",%d", d.mZombieInputCount); // number of inputs which were over 3 years old when spent
+						fi_fprintf(fph, ",%f", d.mZombieInputValue); // total value of inputs which were over 3 years old when spent
+						fi_fprintf(fph, ",%f", d.mZombieScore); // total value of inputs which were over 3 years old when spent
+
+						fi_fprintf(fph, ",%d", d.mUTXOCount); // number of inputs which were over 3 years old when spent
+						fi_fprintf(fph, ",%f", d.mUTXOValue); // total value of inputs which were over 3 years old when spent
+
+						for (uint32_t i = 0; i < AR_LAST; i++)
+						{
+							AgeStat &a = d.mAgeStats[i];
+							fi_fprintf(fph, ",%d", a.mCount);
+						}
+
+						for (uint32_t i = 0; i < AR_LAST; i++)
+						{
+							AgeStat &a = d.mAgeStats[i];
+							fi_fprintf(fph, ",%f", a.mValue);
+						}
+
+
+						fi_fprintf(fph, "\n");
+
 					}
+
 				}
 				fi_fclose(fph);
 			}
 			else
 			{
-				logMessage("Failed to open file '%s' for write access.\r\n", reportFileName);
+				logMessage("Failed to open file '%s' for write access.\n", reportFileName);
 			}
 
 		}
@@ -1495,10 +1810,124 @@ namespace PUBLIC_KEY_DATABASE
 		void computeTransactionStatistics(const Transaction &t, uint64_t toffset)
 		{
 			uint32_t days = getAgeInDays(t.mTransactionTime);
+			if (days != mLastDay)
+			{
+				if (days > mLastDay)
+				{
+					logMessage("Accumulating Unspent Transaction Output Statistics for %s\r\n", getDateString(t.mTransactionTime));
+					DailyStatistics &d = mDailyStatistics[mLastDay];
+					d.mUTXOCount = uint32_t(mUTXOStats.size());
+					// iterate through all unspent transaction outputs
+					for (auto i = mUTXOStats.begin(); i != mUTXOStats.end(); ++i)
+					{
+						UTXOSTAT &stat = (*i).second;
+						double value = (double)stat.mValue / ONE_BTC;
+						d.mUTXOValue += value;
+						uint32_t age = getAgeInDays(stat.mTimeStamp, t.mTransactionTime);
+						for (uint32_t i = 0; i < AR_LAST; i++)
+						{
+							if (age <= d.mAgeStats[i].mDays)
+							{
+								d.mAgeStats[i].mCount++;
+								d.mAgeStats[i].mValue += value;
+								break;
+							}
+						}
+					}
+					mLastDay = days;
+				}
+			}
 			assert(days < MAXIMUM_DAYS);
 			DailyStatistics &d = mDailyStatistics[days];
+			if (t.mBlockNumber != d.mCurrentBlock)
+			{
+				d.mCurrentBlock = t.mBlockNumber;
+				d.mBlockCount++;
+				if (d.mTransactionBlockCount > d.mMaxTransactionBlockCount)
+				{
+					d.mMaxTransactionBlockCount = d.mTransactionBlockCount;
+				}
+				d.mTransactionBlockCount = 0;
+			}
+			d.mTransactionBlockCount++;
 			d.mTransactionCount++;
 			d.mTransactionSize += t.mTransactionSize;
+			d.mInputCount += uint32_t(t.mInputs.size());
+			d.mOutputCount += uint32_t(t.mOutputs.size());
+			if (t.mInputs.size() > d.mMaxInputCount)
+			{
+				d.mMaxInputCount = uint32_t(t.mInputs.size());
+			}
+			if (t.mOutputs.size() > d.mMaxOutputCount)
+			{
+				d.mMaxInputCount = uint32_t(t.mOutputs.size());
+			}
+			if (t.mTransactionSize > d.mMaxTransactionSize)
+			{
+				d.mMaxTransactionSize = t.mTransactionSize;
+			}
+			// iterate through all of the inputs on this transaction and accumulate daily stats
+			for (size_t i = 0; i < t.mInputs.size(); i++)
+			{
+				const TransactionInput &input = t.mInputs[i];
+
+				if (input.mTransactionIndex != 0xFFFFFFFF )
+				{
+					UTXO utxo(input.mTransactionFileOffset, input.mTransactionIndex);
+					UTXOStatMap::iterator found = mUTXOStats.find(utxo);
+					if (found != mUTXOStats.end())
+					{
+						mUTXOStats.erase(found);
+					}
+					else
+					{
+						assert(0);
+					}
+				}
+
+				d.mTotalInputScriptLength += input.mResponseScriptLength;
+				d.mTotalInputValue += double(input.mInputValue) / ONE_BTC;
+				if (input.mResponseScriptLength > d.mMaxInputScriptLength)
+				{
+					d.mMaxInputScriptLength = input.mResponseScriptLength;
+				}
+				if (input.mInputValue > d.mMaxInputValue)
+				{
+					d.mMaxInputValue = input.mInputValue;
+				}
+				uint32_t days = getAgeInDays(input.mTimeStamp, t.mTransactionTime);
+				if (days > d.mMaxInputAge)
+				{
+					d.mMaxInputAge = days;
+				}
+//				uint32_t days = getAgeInDaysCurrent(input.mTimeStamp);
+				if (days > ZOMBIE_TIME)
+				{
+					d.mZombieInputCount++;
+					d.mZombieInputValue += double(input.mInputValue) / ONE_BTC;
+				}
+				d.mZombieScore += (double)(days*days)*(double(input.mInputValue) / ONE_BTC);
+			}
+			for (size_t i = 0; i < t.mOutputs.size(); i++)
+			{
+				const TransactionOutput &output = t.mOutputs[i];
+				d.mTotalOutputScriptLength += output.mScriptLength;
+				d.mTotalOutputValue += (double)(output.mValue) / ONE_BTC;
+				if (output.mScriptLength > d.mMaxOutputScriptLength)
+				{
+					d.mMaxOutputScriptLength = output.mScriptLength;
+				}
+				if (output.mValue > d.mMaxOutputValue)
+				{
+					d.mMaxOutputValue = output.mValue;
+				}
+
+				UTXOSTAT stat(output.mValue, t.mTransactionTime);
+				UTXO utxo(toffset, i);
+				mUTXOStats[utxo] = stat;
+
+				d.mKeyTypeCounts[output.mKeyType]++;
+			}
 			if (d.mTimeStamp == 0)
 			{
 				d.mTimeStamp = t.mTransactionTime;
@@ -1527,7 +1956,10 @@ namespace PUBLIC_KEY_DATABASE
 		const uint64_t				*mPublicKeyRecordOffsets;		// Offsets 
 		PublicKeyRecordFile			**mPublicKeyRecordSorted;		// Public key records sorted
 
-		DailyStatistics				*mDailyStatistics; // room to compute daily statistics
+		uint32_t					mLastDay;
+		DailyStatistics				*mDailyStatistics;	// room to compute daily statistics
+		UTXOMap						mUTXO;				// unspent transaction outputs...
+		UTXOStatMap					mUTXOStats;			//
 	};
 
 }

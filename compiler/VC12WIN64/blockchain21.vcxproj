@@ -122,7 +122,10 @@
     </ClInclude>
     <ClInclude Include="..\..\CRC32.h">
     </ClInclude>
-    <ClInclude Include="..\..\FileInterface.h" />
+    <ClInclude Include="..\..\FileInterface.h">
+    </ClInclude>
+    <ClInclude Include="..\..\HeapSort.h">
+    </ClInclude>
     <ClInclude Include="..\..\logging.h">
     </ClInclude>
     <ClInclude Include="..\..\MemoryMap.h">
@@ -141,7 +144,8 @@
     </ClCompile>
     <ClCompile Include="..\..\CRC32.cpp">
     </ClCompile>
-    <ClCompile Include="..\..\FileInterface.cpp" />
+    <ClCompile Include="..\..\FileInterface.cpp">
+    </ClCompile>
     <ClCompile Include="..\..\logging.cpp">
     </ClCompile>
     <ClCompile Include="..\..\main.cpp">
