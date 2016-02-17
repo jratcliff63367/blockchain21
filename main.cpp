@@ -26,6 +26,7 @@ int main(int argc,const char **argv)
 	uint32_t searchForTextLength = 0;
 	const char *dataPath = ".";
 	searchForTextLength = 0;
+	bool rebuildPublicKeyDatabase = false;
 	int i = 1;
 	while ( i < argc )
 	{
@@ -56,6 +57,10 @@ int main(int argc,const char **argv)
 			else if (strcmp(option, "-analyze") == 0)
 			{
 				analyze = true;
+			}
+			else if (strcmp(option, "-rebuild") == 0)
+			{
+				rebuildPublicKeyDatabase = true;
 			}
 			else if (strcmp(option, "-text") == 0)
 			{
@@ -103,9 +108,16 @@ int main(int argc,const char **argv)
 	{
 		if (analyze)
 		{
-//            p->buildPublicKeyDatabase();
-			p->reportDailyTransactions("Transactions.csv");
-			p->reportTopBalances("TopBalances.csv", 100, 0xFFFFFFFF);
+			if (rebuildPublicKeyDatabase)
+			{
+				printf("Rebuilding the public-key database.\r\n");
+				p->buildPublicKeyDatabase();
+			}
+			else
+			{
+				p->reportDailyTransactions("Transactions.csv");
+				p->reportTopBalances("TopBalances.csv", 50000, 0xFFFFFFFF);
+			}
 		}
 		else
 		{

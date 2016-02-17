@@ -16,9 +16,10 @@
 #define ONE_BTC 100000000
 #define ONE_MBTC (ONE_BTC/1000)
 #define SECONDS_PER_DAY (60*60*24)
+#define DUST_VALUE ONE_MBTC
 
 // how old, in seconds, before an input is considered a 'zombie'
-#define ZOMBIE_TIME (365*3)
+#define ZOMBIE_TIME (365*4)
 
 #ifdef _MSC_VER
 #pragma warning(disable:4100 4996 4189)
@@ -39,6 +40,7 @@ namespace PUBLIC_KEY_DATABASE
 		AR_ONE_YEAR,			// one-to-two years
 		AR_TWO_YEARS,			// two to three years
 		AR_THREE_YEARS,
+		AR_FOUR_YEARS,
 		AR_ZOMBIE,				// over 3 years
 		AR_LAST
 	};
@@ -99,9 +101,15 @@ namespace PUBLIC_KEY_DATABASE
 					mCount = 0;
 					mValue = 0;
 					break;
+				case AR_FOUR_YEARS:
+					mDays = 365 * 4;
+					mLabel = "Three to Four Years";
+					mCount = 0;
+					mValue = 0;
+					break;
 				case AR_ZOMBIE:
 					mDays = 365 * 1000;
-					mLabel = "Over Three Years";
+					mLabel = "Over Four Years";
 					mCount = 0;
 					mValue = 0;
 					break;
@@ -169,12 +177,17 @@ namespace PUBLIC_KEY_DATABASE
 
 		uint32_t	mMaxInputAge;							// old input for this day.
 
+		uint32_t	mDustCount;								// number of dust transactions on this day
+
 		uint32_t	mZombieInputCount;						// Number of times an input more than 3 years old was encountered
 		double		mZombieInputValue;						// Total value in BTC that was more than 3 years old
 		double		mZombieScore;
 
 		uint32_t	mUTXOCount;					// total number of unspent transaction outputs
 		double		mUTXOValue;					// total value of all unspent transaction outputs
+
+		uint32_t	mEarlyCount;		// Number of unspent transaction outputs from 2009-2010
+		double		mEarlyValue;		// Total vaule of unspent transaction outputs from 2009-2010
 
 		AgeStat		mAgeStats[AR_LAST];			// UTXO by age stats
 	};
@@ -211,6 +224,21 @@ namespace PUBLIC_KEY_DATABASE
 	}
 
 
+	bool isEarly(uint32_t timeStamp)
+	{
+		bool ret = false;
+
+		static char scratch[1024];
+		time_t t(timeStamp);
+		struct tm *gtm = gmtime(&t);
+		uint32_t year = gtm->tm_year + 1900;
+		if (year == 2009 || year == 2010 )
+		{
+			ret = true;
+		}
+
+		return ret;
+	}
 
 	typedef std::vector< uint64_t > TransactionVector;
 
@@ -817,8 +845,8 @@ public:
 		return mFileOffset ^ mInputIndex;
 	}
 
-	uint64_t	mFileOffset;
-	uint64_t	mInputIndex;
+	uint64_t	mFileOffset;			// The file offset where the transaction is located
+	uint64_t	mInputIndex;			// The index number of this output
 };
 
 class UTXOSTAT
@@ -1016,6 +1044,7 @@ namespace PUBLIC_KEY_DATABASE
 						if (found != mUTXO.end())
 						{
 							inputValue = (*found).second;
+							mUTXO.erase(found); // we can now remove it since it has been consumed
 						}
 						else
 						{
@@ -1025,13 +1054,15 @@ namespace PUBLIC_KEY_DATABASE
 					t.addInput(bi, fileOffset,timeStamp, inputValue);
 				}
 
+				// Each output gets added to the UTXO hash map
 				for (uint32_t i = 0; i < bt.outputCount; i++)
 				{
 					const BlockChain::BlockOutput &bo = bt.outputs[i];
 					uint32_t addressIndex = getPublicKeyIndex(bo.asciiAddress);
 					t.addOutput(bo,addressIndex);
+					// Add it to the UTXO set
 					UTXO utxo(fileOffset, i);
-					mUTXO[utxo] = bo.value;
+					mUTXO[utxo] = bo.value;			// Crash occurred here?  Why?
 				}
 
 				t.save(mTransactionFile);
@@ -1055,6 +1086,11 @@ namespace PUBLIC_KEY_DATABASE
 				}
 			}
 			fi_fflush(mTransactionFile);
+
+			if ((b->blockIndex % 10000) == 0)
+			{
+				closePublicKeyFile(true); //
+			}
 		}
 
 		// Once all of the blocks have been processed and transactions accumulated, we now
@@ -1067,7 +1103,7 @@ namespace PUBLIC_KEY_DATABASE
 		{
 			if (!mAnalyze)
 			{
-				closePublicKeyFile();
+				closePublicKeyFile(false);
 				mTransactionFile = nullptr;
 				logMessage("Clearing transactions container\n");
 				mTransactions.clear();		// We no longer need this hash-set of transaction hashes since we have rebased the data based the data based on transaction offset into the datafile
@@ -1331,7 +1367,7 @@ namespace PUBLIC_KEY_DATABASE
 		}
 
 		// Close the unique public keys file
-		void closePublicKeyFile(void)
+		void closePublicKeyFile(bool isCheckPoint)
 		{
 			assert(mTransactionCount == uint32_t(mTransactions.size()));
 			assert(mPublicKeyCount == uint32_t(mPublicKeys.size()));
@@ -1339,24 +1375,56 @@ namespace PUBLIC_KEY_DATABASE
 			// Write out the total number of transactions and then close the transactions file
 			if (mTransactionFile)
 			{
-				logMessage("Closing the transaction file which contains %s transactions.\n", formatNumber(mTransactionCount));
+				uint64_t curLoc = fi_ftell(mTransactionFile);
+				if (isCheckPoint)
+				{
+					logMessage("Checkpointing the transaction file which contains %s transactions.\n", formatNumber(mTransactionCount));
+				}
+				else
+				{
+					logMessage("Closing the transaction file which contains %s transactions.\n", formatNumber(mTransactionCount));
+				}
 				fi_fseek(mTransactionFile, mTransactionFileCountSeekLocation, SEEK_SET);
 				fi_fwrite(&mTransactionCount, sizeof(mTransactionCount), 1, mTransactionFile);
-				fi_fclose(mTransactionFile);
-				mTransactionFile = nullptr;
+				if (isCheckPoint)
+				{
+					fi_fseek(mTransactionFile, curLoc, SEEK_SET);
+				}
+				else
+				{
+					fi_fclose(mTransactionFile);
+					mTransactionFile = nullptr;
+				}
 			}
 			else
 			{
 				assert(0);
 			}
+
 			logMessage("Processed %s transactions with %s unique public keys.\n", formatNumber(int32_t(mTransactionCount)), formatNumber(int32_t(mPublicKeyCount)));
+
 			if (mPublicKeyFile)
 			{
-				logMessage("Closing the PublicKeys file\n");
+				uint64_t curLoc = fi_ftell(mPublicKeyFile);
+				if (isCheckPoint)
+				{
+					logMessage("Checkpointing the PublicKeys file\n");
+				}
+				else
+				{
+					logMessage("Closing the PublicKeys file\n");
+				}
 				fi_fseek(mPublicKeyFile, mPublicKeyFileCountSeekLocation, SEEK_SET);
 				fi_fwrite(&mPublicKeyCount, sizeof(mPublicKeyCount), 1, mPublicKeyFile);
-				fi_fclose(mPublicKeyFile);
-				mPublicKeyFile = nullptr;
+				if (isCheckPoint)
+				{
+					fi_fseek(mPublicKeyFile, curLoc, SEEK_SET);
+				}
+				else
+				{
+					fi_fclose(mPublicKeyFile);
+					mPublicKeyFile = nullptr;
+				}
 			}
 			else
 			{
@@ -1642,6 +1710,7 @@ namespace PUBLIC_KEY_DATABASE
 		{
 			delete[]mDailyStatistics;
 			mDailyStatistics = new DailyStatistics[MAXIMUM_DAYS];
+			mZombieInputs.clear();
 			time_t curTime;
 			time(&curTime);		// get the current 'real' time; if we go past it, we stop..
 			mLastDay = 0;
@@ -1668,6 +1737,7 @@ namespace PUBLIC_KEY_DATABASE
 				fi_fprintf(fph,"Date");
 
 				fi_fprintf(fph, ",BlockCount");
+				fi_fprintf(fph, ",DustCount");
 				fi_fprintf(fph, ",TotalTransactionCount");
 				fi_fprintf(fph, ",AverageTransactionCount");
 				fi_fprintf(fph, ",MaxTransactionCount");
@@ -1681,6 +1751,8 @@ namespace PUBLIC_KEY_DATABASE
 				fi_fprintf(fph, ",TotalInputValue");
 				fi_fprintf(fph, ",AverageInputValue");
 				fi_fprintf(fph, ",MaxInputValue");
+				fi_fprintf(fph, ",TotalInputScriptLength");
+				fi_fprintf(fph, ",AverageInputScriptLength");
 
 				fi_fprintf(fph, ",TotalOutputCount");
 				fi_fprintf(fph, ",AverageOutputCount");
@@ -1688,6 +1760,9 @@ namespace PUBLIC_KEY_DATABASE
 				fi_fprintf(fph, ",TotalOutputValue");
 				fi_fprintf(fph, ",AverageOutputValue");
 				fi_fprintf(fph, ",MaxOutputValue");
+				fi_fprintf(fph, ",TotalOutputScriptLength");
+				fi_fprintf(fph, ",AverageOutputScriptLength");
+
 
 				fi_fprintf(fph, ",MaxInputDaysOld");
 
@@ -1697,6 +1772,10 @@ namespace PUBLIC_KEY_DATABASE
 
 				fi_fprintf(fph, ",UTXOCount");
 				fi_fprintf(fph, ",UTXOValue");
+
+				fi_fprintf(fph, ",EarlyCount");
+				fi_fprintf(fph, ",EarlyValue");
+
 
 				{
 					DailyStatistics &d = mDailyStatistics[0];
@@ -1725,6 +1804,7 @@ namespace PUBLIC_KEY_DATABASE
 					{
 						fi_fprintf(fph, "%s",	getDateString(d.mTimeStamp), d.mTransactionCount);	// Date
 						fi_fprintf(fph, ",%d",	d.mBlockCount);										// Blocks on this day
+						fi_fprintf(fph, ",%d", d.mDustCount);
 						fi_fprintf(fph, ",%d",	d.mTransactionCount);								// Number of transactions on this day
 						fi_fprintf(fph, ",%f",	(double)d.mTransactionCount / (double)d.mBlockCount);				// Average number of transactions per block
 						fi_fprintf(fph, ",%d",  d.mMaxTransactionBlockCount);						// Most transactions in a block
@@ -1737,6 +1817,8 @@ namespace PUBLIC_KEY_DATABASE
 						fi_fprintf(fph, ",%f", d.mTotalInputValue);									// Total input value
 						fi_fprintf(fph, ",%f", d.mTotalInputValue / (double)d.mTransactionCount);	// Average input value per transaction
 						fi_fprintf(fph, ",%f", (double)d.mMaxInputValue / ONE_BTC);					// Maximum input value on this day
+						fi_fprintf(fph, ",%d", d.mTotalInputScriptLength);
+						fi_fprintf(fph, ",%f", (double)d.mTotalInputScriptLength / (double)d.mInputCount);
 
 						fi_fprintf(fph, ",%d", d.mOutputCount);										// Total number of outputs on this day.
 						fi_fprintf(fph, ",%f", (double)d.mOutputCount / (double)d.mTransactionCount);	// Average number of outputs per transaction
@@ -1744,6 +1826,9 @@ namespace PUBLIC_KEY_DATABASE
 						fi_fprintf(fph, ",%f", d.mTotalOutputValue);									// Total output value
 						fi_fprintf(fph, ",%f", d.mTotalOutputValue / (double)d.mTransactionCount);	// Average output value per transaction
 						fi_fprintf(fph, ",%f", (double)d.mMaxOutputValue / ONE_BTC);					// Maximum output value on this day
+						fi_fprintf(fph, ",%d", d.mTotalOutputScriptLength);
+						fi_fprintf(fph, ",%f", (double)d.mTotalOutputScriptLength / (double)d.mOutputCount);
+
 
 						fi_fprintf(fph, ",%d", d.mMaxInputAge); //  oldest input
 
@@ -1753,6 +1838,10 @@ namespace PUBLIC_KEY_DATABASE
 
 						fi_fprintf(fph, ",%d", d.mUTXOCount); // number of inputs which were over 3 years old when spent
 						fi_fprintf(fph, ",%f", d.mUTXOValue); // total value of inputs which were over 3 years old when spent
+
+						fi_fprintf(fph, ",%d", d.mEarlyCount); // number of inputs which were over 3 years old when spent
+						fi_fprintf(fph, ",%f", d.mEarlyValue); // total value of inputs which were over 3 years old when spent
+
 
 						for (uint32_t i = 0; i < AR_LAST; i++)
 						{
@@ -1779,7 +1868,50 @@ namespace PUBLIC_KEY_DATABASE
 				logMessage("Failed to open file '%s' for write access.\n", reportFileName);
 			}
 
+			if (!mZombieInputs.empty())
+			{
+				logMessage("Encountered %s zombie inputs.\r\n", formatNumber(int32_t(mZombieInputs.size())));
+				logMessage("Generating Zombie report.\r\n");
+				FILE_INTERFACE *fph = fi_fopen("ZombieReport.csv", "wb", nullptr, 0, false);
+				if (fph)
+				{
+					fi_fprintf(fph, "Date,LastDate,PublicKey,Age,Value,ZombieScore\r\n");
+					for (size_t i = 0; i < mZombieInputs.size(); i++)
+					{
+						TransactionInput &input = mZombieInputs[i];
+						Transaction t;
+						bool ok = readTransaction(t, input.mTransactionFileOffset);
+						assert(ok);
+						if (ok)
+						{
+							assert(input.mTransactionIndex != 0xFFFFFFFF);
+							if (input.mTransactionIndex != 0xFFFFFFFF)
+							{
+								assert(input.mTransactionIndex < t.mOutputs.size());
+								if (input.mTransactionIndex < t.mOutputs.size())
+								{
+									TransactionOutput &output = t.mOutputs[input.mTransactionIndex];
+									fi_fprintf(fph, "%s,", getDateString(input.mTimeStamp));
+									fi_fprintf(fph, "%s,", getDateString(t.mTransactionTime));
+									PublicKeyData &a = mAddresses[output.mIndex];
+									fi_fprintf(fph, "%s,", getBitcoinAddressAscii(a.address));
+									uint32_t days = getAgeInDays(t.mTransactionTime, input.mTimeStamp );
+									fi_fprintf(fph, "%d,", days);
+									double value = (double)output.mValue / ONE_BTC;
+									fi_fprintf(fph, "%f,", value);
+									double score = double(days*days)*value;
+									fi_fprintf(fph, "%f,", score);
+									fi_fprintf(fph, "\r\n");
+								}
+							}
+						}
+					}
+					fi_fclose(fph);
+				}
+			}
+
 		}
+
 
 		bool noMoreDays(uint32_t index)
 		{
@@ -1810,6 +1942,7 @@ namespace PUBLIC_KEY_DATABASE
 		void computeTransactionStatistics(const Transaction &t, uint64_t toffset)
 		{
 			uint32_t days = getAgeInDays(t.mTransactionTime);
+
 			if (days != mLastDay)
 			{
 				if (days > mLastDay)
@@ -1822,6 +1955,13 @@ namespace PUBLIC_KEY_DATABASE
 					{
 						UTXOSTAT &stat = (*i).second;
 						double value = (double)stat.mValue / ONE_BTC;
+
+						if (isEarly(stat.mTimeStamp))
+						{
+							d.mEarlyCount++;
+							d.mEarlyValue += value;
+						}
+
 						d.mUTXOValue += value;
 						uint32_t age = getAgeInDays(stat.mTimeStamp, t.mTransactionTime);
 						for (uint32_t i = 0; i < AR_LAST; i++)
@@ -1878,12 +2018,17 @@ namespace PUBLIC_KEY_DATABASE
 					if (found != mUTXOStats.end())
 					{
 						mUTXOStats.erase(found);
+						if (input.mInputValue < DUST_VALUE)
+						{
+							d.mDustCount++;
+						}
 					}
 					else
 					{
 						assert(0);
 					}
 				}
+
 
 				d.mTotalInputScriptLength += input.mResponseScriptLength;
 				d.mTotalInputValue += double(input.mInputValue) / ONE_BTC;
@@ -1900,12 +2045,16 @@ namespace PUBLIC_KEY_DATABASE
 				{
 					d.mMaxInputAge = days;
 				}
-//				uint32_t days = getAgeInDaysCurrent(input.mTimeStamp);
+
 				if (days > ZOMBIE_TIME)
 				{
+					TransactionInput ip = input;
+					ip.mTimeStamp = t.mTransactionTime;
+					mZombieInputs.push_back(ip);
 					d.mZombieInputCount++;
 					d.mZombieInputValue += double(input.mInputValue) / ONE_BTC;
 				}
+
 				d.mZombieScore += (double)(days*days)*(double(input.mInputValue) / ONE_BTC);
 			}
 			for (size_t i = 0; i < t.mOutputs.size(); i++)
@@ -1960,6 +2109,8 @@ namespace PUBLIC_KEY_DATABASE
 		DailyStatistics				*mDailyStatistics;	// room to compute daily statistics
 		UTXOMap						mUTXO;				// unspent transaction outputs...
 		UTXOStatMap					mUTXOStats;			//
+
+		TransactionInputVector		mZombieInputs;		// all zombie events
 	};
 
 }
