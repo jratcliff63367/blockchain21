@@ -28,6 +28,209 @@
 namespace PUBLIC_KEY_DATABASE
 {
 
+	enum ValueType
+	{
+		VT_MICRO_BIT,    // 0.0001
+		VT_MILI_BIT,     // 0.001
+		VT_CENTI_BIT,    // 0.01
+		VT_TENTH,		 // 0.1
+		VT_QUARTER,		 // 0.25
+		VT_BTC,			 // 1
+		VT_TEN_BTC,		 // 10
+		VT_HUNDRED_BTC,  // 100
+		VT_THOUSAND_BTC, // 1000
+		VT_TEN_THOUSAND_BTC,
+		VT_LAST
+	};
+
+	double getValueTypeValue(ValueType t)
+	{
+		double ret = 0;
+		switch ( t )
+		{
+			case VT_MICRO_BIT:    // 0.0001
+				ret = 0.0001;
+				break;
+			case VT_MILI_BIT:     // 0.001
+				ret = 0.001;
+				break;
+			case VT_CENTI_BIT:    // 0.01
+				ret = 0.01;
+				break;
+			case VT_TENTH:		 // 0.1
+				ret = 0.1;
+				break;
+			case VT_QUARTER:		 // 0.25
+				ret = 0.25;
+				break;
+			case VT_BTC:			 // 1
+				ret = 1;
+				break;
+			case VT_TEN_BTC:		 // 10
+				ret = 10;
+				break;
+			case VT_HUNDRED_BTC:  // 100
+				ret = 100;
+				break;
+			case VT_THOUSAND_BTC: // 1000
+				ret = 1000;
+				break;
+			case VT_TEN_THOUSAND_BTC:
+				ret = 10000;
+				break;
+		}
+		return ret;
+	}
+
+	const char * getValueTypeLabel(ValueType type)
+	{
+		const char *ret = "UNKNOWN";
+
+		switch (type)
+		{
+			case VT_MICRO_BIT:    // 0.0001
+				ret = "0.0001";
+				break;
+			case VT_MILI_BIT:     // 0.001
+				ret = "0.001";
+				break;
+			case VT_CENTI_BIT:    // 0.01
+				ret = "0.01";
+				break;
+			case VT_TENTH:		 // 0.1
+				ret = "0.1";
+				break;
+			case VT_QUARTER:		 // 0.25
+				ret = "0.25";
+				break;
+			case VT_BTC:			 // 1
+				ret = "1btc";
+				break;
+			case VT_TEN_BTC:		 // 10
+				ret = "10btc";
+				break;
+			case VT_HUNDRED_BTC:  // 100
+				ret = "100btc";
+				break;
+			case VT_THOUSAND_BTC: // 1000
+				ret = "1000btc";
+				break;
+			case VT_TEN_THOUSAND_BTC:
+				ret = "10000btc";
+				break;
+		}
+		return ret;
+	}
+
+	struct ValueEntry
+	{
+		void init(ValueType t)
+		{
+			mType = t;
+			mCount = 0;
+			mTotalValue = 0;
+			mValue = getValueTypeValue(mType);
+			mLabel = getValueTypeLabel(mType);
+		}
+
+		void addValue(uint64_t v)
+		{
+			double dv = double(v) / ONE_BTC;
+			addValue(v);
+		}
+
+
+		void addValue(double v)
+		{
+			mCount++;
+			mTotalValue += v;
+		}
+
+		ValueType	mType;				// type of value
+		double		mValue;				// amount of value
+		uint32_t	mCount;				// number of transactions within this value range
+		double		mTotalValue;		// total value of transactions within this range
+		const char	*mLabel;
+	};
+
+	struct ValueEntryTable
+	{
+		ValueEntryTable(void)
+		{
+			init();
+		}
+
+		void init(void)
+		{
+			mTable[VT_MICRO_BIT].init(VT_MICRO_BIT);
+			mTable[VT_MILI_BIT].init(VT_MILI_BIT);
+			mTable[VT_CENTI_BIT].init(VT_CENTI_BIT);
+			mTable[VT_TENTH].init(VT_TENTH);
+			mTable[VT_QUARTER].init(VT_QUARTER);
+			mTable[VT_BTC].init(VT_BTC);
+			mTable[VT_TEN_BTC].init(VT_TEN_BTC);
+			mTable[VT_HUNDRED_BTC].init(VT_HUNDRED_BTC);
+			mTable[VT_THOUSAND_BTC].init(VT_THOUSAND_BTC);
+			mTable[VT_TEN_THOUSAND_BTC].init(VT_TEN_THOUSAND_BTC);
+		}
+
+		void addValue(uint64_t v)
+		{
+			double dv = double(v) / ONE_BTC;
+			addValue(dv);
+		}
+
+		void addValue(double v)
+		{
+			bool found = false;
+			double prev = 0;
+			for (uint32_t i = 0; i < (VT_LAST-1); i++)
+			{
+				if (v >= prev && v < mTable[i].mValue)
+				{
+					found = true;
+					mTable[i].addValue(v);
+					break;
+				}
+				prev = mTable[i].mValue;
+			}
+			if (!found)
+			{
+				assert(v >= 10000);
+				mTable[VT_TEN_THOUSAND_BTC].addValue(v);
+			}
+		}
+
+		void outputHeader(FILE_INTERFACE *fph)
+		{
+			for (uint32_t i = 0; i < VT_LAST; i++)
+			{
+				fi_fprintf(fph, "\"%s count\",", mTable[i].mLabel);
+			}
+			for (uint32_t i = 0; i < VT_LAST; i++)
+			{
+				fi_fprintf(fph, "\"%s value\",", mTable[i].mLabel);
+			}
+		}
+
+		void outputValue(FILE_INTERFACE *fph)
+		{
+			for (uint32_t i = 0; i < VT_LAST; i++)
+			{
+				fi_fprintf(fph, "%d,", mTable[i].mCount);
+			}
+			for (uint32_t i = 0; i < VT_LAST; i++)
+			{
+				fi_fprintf(fph, "%f,", mTable[i].mTotalValue);
+			}
+		}
+
+
+		ValueEntry	mTable[VT_LAST];
+	};
+
+
+
 #define MAXIMUM_DAYS (365*10)	// Leave room for 10 years of days
 
 	enum AgeRank
@@ -133,6 +336,7 @@ namespace PUBLIC_KEY_DATABASE
 			{
 				mAgeStats[i].init((AgeRank)i);
 			}
+			mValueEntryTable.init();
 		}
 
 		uint32_t getMeanInputCount(void) const
@@ -190,6 +394,9 @@ namespace PUBLIC_KEY_DATABASE
 		double		mEarlyValue;		// Total vaule of unspent transaction outputs from 2009-2010
 
 		AgeStat		mAgeStats[AR_LAST];			// UTXO by age stats
+
+
+		ValueEntryTable	mValueEntryTable;
 	};
 
 
@@ -1190,6 +1397,7 @@ namespace PUBLIC_KEY_DATABASE
 				}
 			}
 
+
 			for (auto i = t.mOutputs.begin(); i != t.mOutputs.end(); ++i)
 			{
 				const TransactionOutput &to = (*i);
@@ -1705,6 +1913,8 @@ namespace PUBLIC_KEY_DATABASE
 
 		}
 
+
+
 		// compute the transaction statistics on a daily basis for the entire history of the blockchain
 		virtual void reportDailyTransactions(const char *reportFileName)
 		{
@@ -1728,6 +1938,36 @@ namespace PUBLIC_KEY_DATABASE
 				uint64_t toffset = transactionOffset; // the base transaction offset
 				transactionOffset = uint64_t(fi_ftell(mTransactionFile));
 				computeTransactionStatistics(t,toffset);
+			}
+
+
+			{
+				logMessage("Generating Value Distribution report.\r\n");
+				FILE_INTERFACE *fph = fi_fopen("ValueDistribution.csv", "wb", nullptr, 0, false);
+				if (fph)
+				{
+					fi_fprintf(fph, "Date,");
+					ValueEntryTable vt;
+					vt.outputHeader(fph);
+					fi_fprintf(fph,"\r\n");
+					for (uint32_t i = 0; i < MAXIMUM_DAYS; i++)
+					{
+						if (noMoreDays(i))
+						{
+							break;
+						}
+
+						DailyStatistics &d = mDailyStatistics[i];
+
+						if (d.mTimeStamp)
+						{
+							fi_fprintf(fph, "%s,", getDateString(d.mTimeStamp));	// Date
+							d.mValueEntryTable.outputValue(fph);
+							fi_fprintf(fph, "\r\n");
+						}
+					}
+					fi_fclose(fph);
+				}
 			}
 
 			FILE_INTERFACE *fph = fi_fopen(reportFileName, "wb", nullptr, 0, false);
@@ -1802,7 +2042,7 @@ namespace PUBLIC_KEY_DATABASE
 
 					if (d.mTimeStamp)
 					{
-						fi_fprintf(fph, "%s",	getDateString(d.mTimeStamp), d.mTransactionCount);	// Date
+						fi_fprintf(fph, "%s",	getDateString(d.mTimeStamp));	// Date
 						fi_fprintf(fph, ",%d",	d.mBlockCount);										// Blocks on this day
 						fi_fprintf(fph, ",%d", d.mDustCount);
 						fi_fprintf(fph, ",%d",	d.mTransactionCount);								// Number of transactions on this day
@@ -2057,6 +2297,49 @@ namespace PUBLIC_KEY_DATABASE
 
 				d.mZombieScore += (double)(days*days)*(double(input.mInputValue) / ONE_BTC);
 			}
+
+
+			uint32_t count = uint32_t(t.mOutputs.size());
+			switch (count)
+			{
+				case 0:
+					assert(0); // should never happen!?
+					break;
+				case 1:
+					{
+						const TransactionOutput &to = t.mOutputs[0];
+						d.mValueEntryTable.addValue(to.mValue);
+					}
+					break;
+				case 2:
+					{
+						const TransactionOutput &t1 = t.mOutputs[0];
+						const TransactionOutput &t2 = t.mOutputs[1];
+						uint64_t v = t1.mValue;
+						if (t2.mValue < v)
+						{
+							v = t2.mValue;
+						}
+						d.mValueEntryTable.addValue(v);
+					}
+					break;
+				default:
+					{
+						uint64_t v = 0;
+						for (uint32_t i = 0; i < count; i++)
+						{
+							const TransactionOutput &to = t.mOutputs[i];
+							if (to.mValue > v)
+							{
+								v = to.mValue;
+							}
+						}
+						d.mValueEntryTable.addValue(v);
+					}
+					break;
+			}
+
+
 			for (size_t i = 0; i < t.mOutputs.size(); i++)
 			{
 				const TransactionOutput &output = t.mOutputs[i];
