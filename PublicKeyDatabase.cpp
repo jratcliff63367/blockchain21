@@ -39,8 +39,10 @@ namespace PUBLIC_KEY_DATABASE
 		VT_TEN_BTC,		 // 10
 		VT_HUNDRED_BTC,  // 100
 		VT_THOUSAND_BTC, // 1000
-		VT_TEN_THOUSAND_BTC,
-		VT_LAST
+		VT_TEN_THOUSAND_BTC, // 10,000
+        VT_ONE_HUNDRED_THOUSAND_BTC, // 100,000
+        VT_ONE_MILLION_BTC, // 1,000,000
+		VT_LAST_ENTRY
 	};
 
 	double getValueTypeValue(ValueType t)
@@ -78,6 +80,15 @@ namespace PUBLIC_KEY_DATABASE
 			case VT_TEN_THOUSAND_BTC:
 				ret = 10000;
 				break;
+            case VT_ONE_HUNDRED_THOUSAND_BTC:
+                ret = 100000;
+                break;
+            case VT_ONE_MILLION_BTC:
+                ret = 1000000;
+                break;
+            default:
+                assert(0);
+                break;
 		}
 		return ret;
 	}
@@ -102,7 +113,7 @@ namespace PUBLIC_KEY_DATABASE
 				break;
 			case VT_QUARTER:		 // 0.25
 				ret = "0.25";
-				break;
+            	break;
 			case VT_BTC:			 // 1
 				ret = "1btc";
 				break;
@@ -113,11 +124,20 @@ namespace PUBLIC_KEY_DATABASE
 				ret = "100btc";
 				break;
 			case VT_THOUSAND_BTC: // 1000
-				ret = "1000btc";
+				ret = "1,000btc";
 				break;
 			case VT_TEN_THOUSAND_BTC:
-				ret = "10000btc";
+				ret = "10,000btc";
 				break;
+            case VT_ONE_HUNDRED_THOUSAND_BTC:
+                ret = "100,000btc";
+                break;
+            case VT_ONE_MILLION_BTC:
+                ret = "1,000,000btc";
+                break;
+             default:
+                assert(0);
+                break;
 		}
 		return ret;
 	}
@@ -172,6 +192,8 @@ namespace PUBLIC_KEY_DATABASE
 			mTable[VT_HUNDRED_BTC].init(VT_HUNDRED_BTC);
 			mTable[VT_THOUSAND_BTC].init(VT_THOUSAND_BTC);
 			mTable[VT_TEN_THOUSAND_BTC].init(VT_TEN_THOUSAND_BTC);
+            mTable[VT_ONE_HUNDRED_THOUSAND_BTC].init(VT_ONE_HUNDRED_THOUSAND_BTC);
+            mTable[VT_ONE_MILLION_BTC].init(VT_ONE_MILLION_BTC);
 		}
 
 		void addValue(uint64_t v)
@@ -184,7 +206,7 @@ namespace PUBLIC_KEY_DATABASE
 		{
 			bool found = false;
 			double prev = 0;
-			for (uint32_t i = 0; i < (VT_LAST-1); i++)
+			for (uint32_t i = 0; i < (VT_LAST_ENTRY-1); i++)
 			{
 				if (v >= prev && v < mTable[i].mValue)
 				{
@@ -196,18 +218,18 @@ namespace PUBLIC_KEY_DATABASE
 			}
 			if (!found)
 			{
-				assert(v >= 10000);
-				mTable[VT_TEN_THOUSAND_BTC].addValue(v);
+				assert(v >= 1000000);
+				mTable[VT_ONE_MILLION_BTC].addValue(v);
 			}
 		}
 
 		void outputHeader(FILE_INTERFACE *fph)
 		{
-			for (uint32_t i = 0; i < VT_LAST; i++)
+			for (uint32_t i = 0; i < VT_LAST_ENTRY; i++)
 			{
 				fi_fprintf(fph, "\"%s count\",", mTable[i].mLabel);
 			}
-			for (uint32_t i = 0; i < VT_LAST; i++)
+			for (uint32_t i = 0; i < VT_LAST_ENTRY; i++)
 			{
 				fi_fprintf(fph, "\"%s value\",", mTable[i].mLabel);
 			}
@@ -215,18 +237,18 @@ namespace PUBLIC_KEY_DATABASE
 
 		void outputValue(FILE_INTERFACE *fph)
 		{
-			for (uint32_t i = 0; i < VT_LAST; i++)
+			for (uint32_t i = 0; i < VT_LAST_ENTRY; i++)
 			{
 				fi_fprintf(fph, "%d,", mTable[i].mCount);
 			}
-			for (uint32_t i = 0; i < VT_LAST; i++)
+			for (uint32_t i = 0; i < VT_LAST_ENTRY; i++)
 			{
 				fi_fprintf(fph, "%f,", mTable[i].mTotalValue);
 			}
 		}
 
 
-		ValueEntry	mTable[VT_LAST];
+		ValueEntry	mTable[VT_LAST_ENTRY];
 	};
 
 
