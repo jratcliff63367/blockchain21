@@ -5,7 +5,7 @@
 
 #ifdef _MSC_VER // Disable the stupid ass absurd warning messages from Visual Studio telling you that using stdlib and stdio is 'not valid ANSI C'
 #pragma warning(disable:4718)
-#pragma warning(disable:4996)
+#pragma warning(disable:4996 4456)
 #endif
 
 

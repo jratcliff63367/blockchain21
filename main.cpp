@@ -16,7 +16,7 @@
 #endif
 
 #ifdef _MSC_VER
-#pragma warning(disable:4996 4702 4505)
+#pragma warning(disable:4996 4702 4505 4456)
 #endif
 
 int main(int argc,const char **argv)

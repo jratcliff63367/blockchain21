@@ -6,6 +6,8 @@
 #include <malloc.h>
 #include <Windows.h>
 
+#pragma warning(disable:4456)
+
 
 class MemoryMapImpl :public MemoryMap
 {

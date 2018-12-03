@@ -22,7 +22,7 @@
 #define ZOMBIE_TIME (365*4)
 
 #ifdef _MSC_VER
-#pragma warning(disable:4100 4996 4189)
+#pragma warning(disable:4100 4996 4189 4456)
 #endif
 
 namespace PUBLIC_KEY_DATABASE

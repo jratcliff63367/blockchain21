@@ -1,5 +1,5 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 2012
+# Visual Studio 14
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "blockchain21", "./blockchain21.vcxproj", "{715D9D8B-CF1C-2D81-86A3-1ED39B5133D4}"
 	ProjectSection(ProjectDependencies) = postProject
 	EndProjectSection
